@@ -16,13 +16,15 @@ Mất khoảng **5 phút**. Làm lần lượt từ trên xuống, mỗi bước
 
 ### Bước 1. Tải extension về máy
 
-Vào **https://github.com/Fr4g1le/VnuLmsTreoHoc**, bấm nút xanh **Code** rồi chọn **Download ZIP**.
+**Cách nhanh nhất:** vào **https://github.com/Fr4g1le/VnuLmsTreoHoc/releases/latest**, kéo xuống mục **Assets**, bấm file **`VnuLmsTreoHoc-vX.Y.zip`** để tải. File này chỉ chứa đúng phần extension, nhẹ hơn.
+
+**Hoặc** vào trang repo, bấm nút xanh **Code** rồi chọn **Download ZIP** (tải cả mã nguồn và hướng dẫn):
 
 ![Bước 1](img/01-tai-zip.png)
 
 ### Bước 2. Giải nén
 
-Mở thư mục **Downloads**, **chuột phải** vào file `VnuLmsTreoHoc-master.zip` → **Extract All…** (Giải nén tất cả) → **Extract**.
+Mở thư mục **Downloads**, **chuột phải** vào file ZIP vừa tải (`VnuLmsTreoHoc-vX.Y.zip` hoặc `VnuLmsTreoHoc-master.zip`) → **Extract All…** (Giải nén tất cả) → **Extract**. Ở Bước 4, chọn thư mục có file `manifest.json` bên trong.
 
 Nên chuyển thư mục vừa giải nén ra chỗ cố định (ví dụ `D:\VnuLmsTreoHoc`) và **đừng xoá nó**, vì trình duyệt chạy extension trực tiếp từ thư mục này.
 
