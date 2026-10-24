@@ -37,6 +37,72 @@ const SCHEMA = {
 };
 
 async function suggest(questions) {
+  const { provider } = await chrome.storage.local.get(['provider']);
+  return provider === 'gemini' ? suggestGemini(questions) : suggestClaude(questions);
+}
+
+// ---------- Gemini (Google AI Studio, có gói miễn phí) ----------
+const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
+
+// responseSchema của Gemini dùng kiểu OpenAPI rút gọn: không có additionalProperties.
+const GEMINI_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    answers: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          n: { type: 'STRING' },
+          choices: { type: 'ARRAY', items: { type: 'INTEGER' } },
+          why: { type: 'STRING' },
+          confidence: { type: 'STRING', enum: ['cao', 'trung bình', 'thấp'] },
+        },
+        required: ['n', 'choices', 'why', 'confidence'],
+      },
+    },
+  },
+  required: ['answers'],
+};
+
+class GeminiError extends Error {}
+
+async function suggestGemini(questions) {
+  const { geminiKey, geminiModel } = await chrome.storage.local.get(['geminiKey', 'geminiModel']);
+  if (!geminiKey) throw new GeminiError('Chưa có khoá Gemini. Bấm "⚙ Khoá API" để nhập.');
+  const model = (geminiModel || DEFAULT_GEMINI_MODEL).trim();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM }] },
+        contents: [{ role: 'user', parts: [{ text: JSON.stringify({ questions }) }] }],
+        generationConfig: { responseMimeType: 'application/json', responseSchema: GEMINI_SCHEMA },
+      }),
+    });
+  } catch (e) {
+    throw new GeminiError('Không kết nối được tới Gemini.');
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = (body.error && body.error.message) || res.statusText;
+    if (res.status === 429) throw new GeminiError('Gemini: hết lượt miễn phí tạm thời, thử lại sau ít phút.');
+    if (res.status === 400 && /api key/i.test(msg)) throw new GeminiError('Khoá Gemini không hợp lệ.');
+    if (res.status === 404) throw new GeminiError(`Gemini không có model "${model}". Kiểm tra tên model trong cài đặt.`);
+    throw new GeminiError(`Lỗi từ Gemini (${res.status}): ${msg}`);
+  }
+  if (body.promptFeedback && body.promptFeedback.blockReason) throw new GeminiError('Gemini chặn câu hỏi này.');
+  const parts = (body.candidates && body.candidates[0] && body.candidates[0].content && body.candidates[0].content.parts) || [];
+  const text = parts.map(p => p.text || '').join('');
+  if (!text) throw new GeminiError('Gemini không trả về kết quả.');
+  return JSON.parse(text).answers;
+}
+
+// ---------- Claude ----------
+async function suggestClaude(questions) {
   const { apiKey, model } = await chrome.storage.local.get(['apiKey', 'model']);
   if (!apiKey) throw new Error('Chưa có khoá API. Bấm "Cài khoá API" để nhập.');
 
@@ -59,6 +125,8 @@ async function suggest(questions) {
 }
 
 function describeError(e) {
+  if (e instanceof GeminiError) return e.message;
+  if (e instanceof SyntaxError) return 'Kết quả AI trả về không đúng định dạng, hãy thử lại.';
   if (e instanceof Anthropic.AuthenticationError) return 'Khoá API không hợp lệ.';
   if (e instanceof Anthropic.PermissionDeniedError) return 'Khoá API không có quyền dùng model này.';
   if (e instanceof Anthropic.RateLimitError) return 'Đang bị giới hạn tốc độ, thử lại sau ít phút.';

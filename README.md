@@ -55,8 +55,10 @@ Lưu ý:
 
 ### Trợ lý trắc nghiệm (AI)
 
-1. Tạo khoá API Claude tại [platform.claude.com](https://platform.claude.com/settings/keys) (cần nạp tiền vào tài khoản API; một bài 10 câu chỉ tốn vài trăm đồng).
-2. Mở bảng **Treo học** → **⚙ Khoá API** (hoặc chuột phải biểu tượng extension → **Options**), dán khoá, chọn model, bấm **Lưu**. Khoá chỉ lưu trong trình duyệt, trang LMS không đọc được.
+1. Lấy khoá AI, chọn một trong hai:
+   - **Google Gemini (miễn phí):** vào [aistudio.google.com/apikey](https://aistudio.google.com/apikey), đăng nhập Google, bấm **Create API key**. Gói miễn phí có giới hạn lượt mỗi phút/ngày và câu hỏi có thể được Google dùng để cải thiện sản phẩm.
+   - **Anthropic Claude (trả phí, chính xác hơn):** tạo khoá tại [platform.claude.com](https://platform.claude.com/settings/keys), cần nạp tiền vào tài khoản API; một bài 10 câu chỉ tốn vài trăm đồng.
+2. Mở bảng **Treo học** → **⚙ Khoá API** (hoặc chuột phải biểu tượng extension → **Options**), chọn nhà cung cấp, dán khoá, bấm **Lưu**. Khoá chỉ lưu trong trình duyệt, trang LMS không đọc được.
 3. Mở bài trắc nghiệm, bấm **LÀM BÀI**, rồi bấm **🤖 Gợi ý đáp án** trong bảng.
 4. Xem gợi ý (khung xanh + giải thích dưới mỗi câu), bấm **✍ Điền gợi ý** hoặc tự chọn, kiểm tra lại rồi **tự bấm Nộp bài**.
 

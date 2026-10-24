@@ -1,23 +1,40 @@
 {
   "manifest_version": 3,
   "name": "VNU LMS - Treo học",
-  "version": "2.3.1",
-  "description": "Tự học lần lượt các mục trên LMS VNU cho đến khi đạt yêu cầu, giữ video chạy khi treo máy, gợi ý đáp án trắc nghiệm bằng AI.",
-  "action": { "default_title": "Mở/đóng bảng Treo học" },
-  "background": { "service_worker": "background.js" },
+  "version": "2.4",
+  "description": "Tự học lần lượt các mục trên LMS VNU cho đến khi đạt yêu cầu, giữ video chạy khi treo máy, gợi ý đáp án trắc nghiệm bằng AI (Gemini miễn phí hoặc Claude).",
+  "action": {
+    "default_title": "Mở/đóng bảng Treo học"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
   "options_page": "options.html",
-  "permissions": ["storage"],
-  "host_permissions": ["https://api.anthropic.com/*"],
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
   "content_scripts": [
     {
-      "matches": ["https://lms.vnu.edu.vn/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://lms.vnu.edu.vn/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://lms.vnu.edu.vn/*"],
-      "js": ["bridge.js"],
+      "matches": [
+        "https://lms.vnu.edu.vn/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
       "run_at": "document_idle"
     }
   ]

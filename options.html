@@ -4,30 +4,57 @@
   <meta charset="utf-8">
   <title>Treo học VNU - Cài đặt AI</title>
   <style>
-    body { font: 14px system-ui, "Segoe UI", sans-serif; max-width: 520px; margin: 32px auto; padding: 0 16px; color: #1f2328; }
+    body { font: 14px system-ui, "Segoe UI", sans-serif; max-width: 540px; margin: 32px auto; padding: 0 16px; color: #1f2328; }
     h1 { font-size: 18px; }
-    label { display: block; margin: 16px 0 4px; font-weight: 600; }
+    h2 { font-size: 15px; margin-top: 28px; }
+    label { display: block; margin: 14px 0 4px; font-weight: 600; }
     input, select { width: 100%; padding: 8px; box-sizing: border-box; font: inherit; }
-    button { margin-top: 16px; padding: 8px 16px; font: inherit; font-weight: 600; color: #fff; background: #1f6feb; border: 0; border-radius: 6px; cursor: pointer; }
+    button { margin-top: 20px; padding: 8px 16px; font: inherit; font-weight: 600; color: #fff; background: #1f6feb; border: 0; border-radius: 6px; cursor: pointer; }
     .muted { color: #57606a; font-size: 13px; }
+    .box { border: 1px solid #d0d7de; border-radius: 8px; padding: 4px 14px 14px; margin-top: 12px; }
+    .box[hidden] { display: none; }
     #status { margin-left: 8px; color: #1a7f37; }
   </style>
 </head>
 <body>
   <h1>Trợ lý trắc nghiệm (AI)</h1>
-  <p class="muted">Extension dùng khoá API Claude của bạn để gợi ý đáp án. Khoá chỉ lưu trong trình duyệt này,
-    trang LMS không đọc được. Tạo khoá tại <a href="https://platform.claude.com/settings/keys" target="_blank">platform.claude.com</a>.</p>
+  <p class="muted">Khoá chỉ lưu trong trình duyệt này, trang LMS không đọc được. Đừng gửi khoá cho ai.</p>
 
-  <label for="apiKey">Khoá API Claude</label>
-  <input id="apiKey" type="password" autocomplete="off" placeholder="sk-ant-...">
-
-  <label for="model">Model</label>
-  <select id="model">
-    <option value="claude-opus-5-5">Claude Opus 5.5 (chính xác nhất, mặc định)</option>
-    <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (nhanh, rẻ hơn)</option>
-    <option value="claude-haiku-5-5">Claude Haiku 5.5 (rất rẻ, kém chính xác hơn)</option>
+  <label for="provider">Dùng AI của</label>
+  <select id="provider">
+    <option value="gemini">Google Gemini (có gói miễn phí)</option>
+    <option value="claude">Anthropic Claude (trả phí, chính xác hơn)</option>
   </select>
-  <p class="muted">Một bài 10 câu với Opus 5.5 tốn khoảng vài trăm đồng tiền API.</p>
+
+  <div class="box" id="geminiBox">
+    <h2>Google Gemini</h2>
+    <p class="muted">Tạo khoá miễn phí tại <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>
+      (chỉ cần tài khoản Google). Gói miễn phí giới hạn số lượt mỗi phút/ngày; câu hỏi gửi lên có thể được Google dùng để cải thiện sản phẩm.</p>
+    <label for="geminiKey">Khoá Gemini</label>
+    <input id="geminiKey" type="password" autocomplete="off" placeholder="AIza...">
+    <label for="geminiModel">Model</label>
+    <input id="geminiModel" list="geminiModels" placeholder="gemini-3.8-flash">
+    <datalist id="geminiModels">
+      <option value="gemini-3.8-flash">
+      <option value="gemini-3.6-flash">
+      <option value="gemini-3.5-flash-lite">
+      <option value="gemini-2.5-flash">
+    </datalist>
+    <p class="muted">Nếu báo hết lượt hoặc không có model, đổi sang model khác (xem model nào miễn phí ở aistudio.google.com/rate-limit).</p>
+  </div>
+
+  <div class="box" id="claudeBox">
+    <h2>Anthropic Claude</h2>
+    <p class="muted">Tạo khoá tại <a href="https://platform.claude.com/settings/keys" target="_blank">platform.claude.com</a> (cần nạp tiền vào tài khoản API).</p>
+    <label for="apiKey">Khoá API Claude</label>
+    <input id="apiKey" type="password" autocomplete="off" placeholder="sk-ant-...">
+    <label for="model">Model</label>
+    <select id="model">
+      <option value="claude-opus-5-5">Claude Opus 5.5 (chính xác nhất, mặc định)</option>
+      <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (nhanh, rẻ hơn)</option>
+      <option value="claude-haiku-5-5">Claude Haiku 5.5 (rất rẻ, kém chính xác hơn)</option>
+    </select>
+  </div>
 
   <button id="save">Lưu</button><span id="status"></span>
   <script src="options.js"></script>
