@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VNU LMS - Treo học
 // @namespace    vnu-lms-keepalive
-// @version      2.3
+// @version      2.3.1
 // @description  Tự học lần lượt các mục trên LMS VNU cho đến khi đạt yêu cầu, giữ video chạy khi treo máy.
 // @match        https://lms.vnu.edu.vn/*
 // @run-at       document-start
@@ -265,8 +265,10 @@
 
   // Thầy cô dặn học xong mỗi bài phải mở tab "Tiến trình học tập". Thử nghiệm: server đã lưu hoàn thành
   // ngay khi rời mục, còn tab này tải lại tiến trình để cây mục lục hiện dấu ✓. Vẫn làm cho chắc.
+  // Chỉ bấm tab của bố cục rộng: ở bố cục hẹp (< 992px) tab là link "#tab1"/"#tab2", bấm vào sẽ về trang chủ.
   async function visitProgressTab() {
-    const tab = re => [...document.querySelectorAll('a.nav-link')].find(e => e.offsetParent && re.test(e.innerText.trim()));
+    const tab = re => [...document.querySelectorAll('a.nav-link')].find(e =>
+      e.offsetParent && re.test(e.innerText.trim()) && !(e.getAttribute('href') || '').startsWith('#'));
     const progress = tab(/^tiến trình học tập$/i);
     const content = tab(/^nội dung$/i);
     if (!progress || !content) return;
@@ -296,6 +298,14 @@
           location.href = readJSON(LS_RUN, {}).url;
           return;
         }
+        if (window.innerWidth < 992) {
+          // Bố cục hẹp ẩn cây mục lục: chờ cửa sổ được mở rộng rồi chạy tiếp
+          if (!S.narrow) log('Cửa sổ hẹp quá, tạm chờ đến khi mở rộng (≥ 992px)…');
+          S.narrow = true;
+          await sleep(5000);
+          continue;
+        }
+        S.narrow = false;
         const item = S.queue.find(q => q.status === 'pending');
         const target = item || (toCheck && S.parking);
         if (!target) break;
