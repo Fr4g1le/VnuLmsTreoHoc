@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "VNU LMS - Treo học",
-  "version": "2.1",
+  "version": "2.2",
   "description": "Tự học lần lượt các mục trên LMS VNU cho đến khi đạt yêu cầu, giữ video chạy khi treo máy.",
   "action": { "default_title": "Mở/đóng bảng Treo học" },
   "background": { "service_worker": "background.js" },

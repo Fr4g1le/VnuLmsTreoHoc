@@ -7,6 +7,7 @@ Extension cho Chrome / Brave / Edge giúp treo máy học trên [LMS VNU](https:
 - **Tự học theo mục lục:** đọc tiến trình học tập của bạn, lập danh sách các mục chưa đạt và mở lần lượt từng mục.
 - **Treo đúng thời gian cần:** lấy "Phải học tối thiểu N phút" trừ đi thời gian bạn đã học, cộng thêm vài phút dự phòng (chỉnh được). Mục đã hoàn thành thì bỏ qua.
 - **Kiểm tra lại với server:** sau mỗi mục, xem server đã ghi nhận hoàn thành chưa; chưa đạt thì treo thêm.
+- **Tự mở tab "Tiến trình học tập"** sau mỗi mục rồi quay lại, để cây mục lục cập nhật dấu ✓ (tắt được trong cài đặt).
 - **Mục PDF / tài liệu:** mục không yêu cầu thời gian được treo theo số phút bạn chọn.
 - **Tự xác nhận "Bạn có đang học tập không ?"** ngay khi hộp thoại hiện ra.
 - **Chống dừng khi đổi tab** và tự phát lại video khi bị dừng.
@@ -17,6 +18,8 @@ Extension cho Chrome / Brave / Edge giúp treo máy học trên [LMS VNU](https:
 ## Cách hoạt động
 
 LMS chỉ cộng thời gian học của một mục **khi bạn rời khỏi mục đó**. Đủ "thời gian tối thiểu" thì server tự đánh dấu hoàn thành. Extension mở mục, chờ đủ giờ, rồi mở mục tiếp theo để server lưu thời gian của mục trước.
+
+Server ghi nhận hoàn thành ngay khi rời mục, kể cả khi chưa mở tab "Tiến trình học tập". Tuy vậy cây mục lục trên trang chỉ đổi sang dấu ✓ sau khi mở tab đó, nên extension vẫn mở tab này sau mỗi mục.
 
 ## Cài đặt
 

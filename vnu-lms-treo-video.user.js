@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VNU LMS - Treo học
 // @namespace    vnu-lms-keepalive
-// @version      2.1
+// @version      2.2
 // @description  Tự học lần lượt các mục trên LMS VNU cho đến khi đạt yêu cầu, giữ video chạy khi treo máy.
 // @match        https://lms.vnu.edu.vn/*
 // @run-at       document-start
@@ -35,6 +35,7 @@
     resumeVideo: true,
     loopVideo: true,
     muteVideo: false,
+    refreshProgress: true,
     kinds: { video: true, pdf: true, text: true, other: false },
     onlyRequired: false,
     extraMin: 1,     // treo thêm sau khi đủ thời gian yêu cầu
@@ -262,6 +263,20 @@
     }
   }
 
+  // Thầy cô dặn học xong mỗi bài phải mở tab "Tiến trình học tập". Thử nghiệm: server đã lưu hoàn thành
+  // ngay khi rời mục, còn tab này tải lại tiến trình để cây mục lục hiện dấu ✓. Vẫn làm cho chắc.
+  async function visitProgressTab() {
+    const tab = re => [...document.querySelectorAll('a.nav-link')].find(e => e.offsetParent && re.test(e.innerText.trim()));
+    const progress = tab(/^tiến trình học tập$/i);
+    const content = tab(/^nội dung$/i);
+    if (!progress || !content) return;
+    progress.click();
+    await sleep(4000);
+    content.click();
+    await sleep(2500);
+    log('Đã mở tab "Tiến trình học tập" để cập nhật.');
+  }
+
   const saveRun = active => writeJSON(LS_RUN, active ? { active: true, classId: S.course && S.course.classId, url: location.href } : {});
 
   async function runLoop() {
@@ -288,7 +303,12 @@
         S.endsAt = 0;
         log((item ? 'Mở: ' : 'Mở mục đã xong để lưu thời gian mục cuối: ') + target.title);
         const ok = await openItem(target);
-        if (toCheck) { await sleep(4000); await verify(toCheck); toCheck = null; }
+        if (toCheck) {
+          await sleep(4000);
+          await verify(toCheck);
+          toCheck = null;
+          if (cfg.refreshProgress) await visitProgressTab();
+        }
         if (!item) continue;
         if (!ok) { item.status = 'error'; log('Không tìm thấy/mở được mục: ' + item.title); continue; }
         item.status = 'holding';
@@ -380,6 +400,7 @@
           <label class="num">Treo thêm sau khi đủ giờ <input type="number" min="0" max="30" step="0.5" data-k="extraMin"> phút</label>
           <label class="num">Mục không yêu cầu thời gian treo <input type="number" min="0.5" max="60" step="0.5" data-k="noReqMin"> phút</label>
           <hr>
+          ${box('refreshProgress', 'Mở tab "Tiến trình học tập" sau mỗi mục để cập nhật')}
           ${box('keepAlive', 'Tự xác nhận "Bạn có đang học tập không ?" và chống dừng khi đổi tab')}
           ${box('resumeVideo', 'Tự phát lại video khi bị dừng')}
           ${box('loopVideo', 'Video ngắn hơn thời gian yêu cầu thì phát lại từ đầu')}
