@@ -1,0 +1,33 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<link rel="stylesheet" href="guide.css"><link rel="stylesheet" href="lms.css">
+<style>
+  .qi { border: 1px solid #ddd; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
+  .qn { background: #e9ecef; display: inline-block; padding: 4px 8px; font-weight: 600; font-size: 13px; }
+  .qt { padding: 8px 14px; border-bottom: 1px solid #eee; }
+  .qa { padding: 6px 22px; display: flex; gap: 10px; align-items: flex-start; }
+  .qa.hit { outline: 2px solid #1f6feb; border-radius: 4px; margin: 0 10px; padding: 6px 12px; }
+  .note { margin: 6px 14px 10px; padding: 6px 10px; border-left: 3px solid #1f6feb; background: #f0f6ff; font-size: 13px; }
+  .submit { position: absolute; right: 30px; top: 700px; background: #20a8a0; color: #fff; padding: 10px 26px; border-radius: 4px; font-weight: 600; }
+  .timer { position: absolute; left: 560px; top: 708px; font-weight: 700; color: #20a8a0; font-size: 18px; }
+</style></head><body>
+<div class="g-title"><span class="step">Bước 9</span>Làm trắc nghiệm với gợi ý của AI (tự bấm nộp bài)</div>
+<script src="guide.js"></script><script src="panel-css.js"></script><script src="lms-mock.js"></script>
+<script>
+  lmsPage(`
+    <div class="qi"><span class="qn">Câu hỏi: 1</span><div class="qt">Chọn phương án Đúng trong các khẳng định sau:</div>
+      <div class="qa">○ Đoàn Thanh niên Cộng sản Hồ Chí Minh là cơ quan nhà nước</div>
+      <div class="qa hit">○ Chính phủ là cơ quan nhà nước</div>
+      <div class="note" id="note">🤖 Gợi ý: B (độ tin cậy cao) — Chính phủ là cơ quan hành chính nhà nước cao nhất; Đoàn TNCS là tổ chức chính trị - xã hội.</div></div>
+    <div class="qi"><span class="qn">Câu hỏi: 2</span><div class="qt">Trong các đáp án dưới đây, đáp án nào ĐÚNG:</div>
+      <div class="qa">○ Pháp luật được đảm bảo thực hiện bằng cưỡng chế của các cộng đồng dân cư</div>
+      <div class="qa hit">○ Pháp luật được đảm bảo thực hiện bằng cưỡng chế của nhà nước</div>
+      <div class="note">🤖 Gợi ý: B (độ tin cậy cao) — Pháp luật do nhà nước bảo đảm thực hiện bằng cưỡng chế nhà nước.</div></div>`);
+  document.body.insertAdjacentHTML('beforeend', '<span class="timer">00:12:40</span><span class="submit" id="submit">Nộp bài</span>');
+  const root = treoPanel(`<div class="muted">Đã dừng</div>`, { quizOpen: true, top: 700, qstatus: 'Trang có 10 câu hỏi.' });
+  mark(root.querySelector('.qsuggest'), 1, 'Bấm "Gợi ý đáp án", chờ 10–30 giây', 'right', { gap: 120, dy: -40 });
+  mark('#note', 2, 'Đọc gợi ý + giải thích dưới mỗi câu', 'top', { gap: 34, dx: 90 });
+  mark(root.querySelector('.qfill'), 3, 'Bấm "Điền gợi ý" (hoặc tự chọn)', 'right', { gap: 230, dy: 30 });
+  mark('#submit', 4, 'Kiểm tra lại rồi TỰ bấm Nộp bài', 'left', { gap: 60 });
+</script>
+<div class="g-note">Ảnh dựng lại từ giao diện extension; câu hỏi là ví dụ</div>
+</body></html>

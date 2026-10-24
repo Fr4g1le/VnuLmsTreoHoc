@@ -1,0 +1,33 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<link rel="stylesheet" href="guide.css">
+<style>
+  .chrome { background: #e9eaee; padding: 10px 14px; display: flex; gap: 10px; align-items: center; }
+  .chrome .addr { background: #fff; border-radius: 18px; padding: 7px 16px; font-size: 15px; width: 520px; }
+  .page { background: #f8f9fa; height: 420px; }
+  .hdr { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: #fff; border-bottom: 1px solid #e3e3e3; }
+  .hdr h1 { font-size: 20px; font-weight: 500; margin: 0; }
+  .search { background: #f1f3f4; border-radius: 18px; padding: 7px 16px; width: 360px; color: #777; font-size: 14px; }
+  .dev { display: flex; gap: 10px; align-items: center; font-size: 14px; }
+  .toggle { width: 38px; height: 20px; border-radius: 10px; background: #fb542b; position: relative; }
+  .toggle::after { content: ''; position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+  .tools { display: flex; gap: 12px; padding: 12px 24px; background: #fff; border-bottom: 1px solid #e3e3e3; }
+  .tools span { border: 1px solid #dadce0; border-radius: 6px; padding: 6px 14px; font-size: 14px; color: #fb542b; font-weight: 600; }
+  .cards { padding: 22px 24px; display: flex; gap: 16px; }
+  .card { background: #fff; border: 1px solid #e3e3e3; border-radius: 10px; width: 300px; height: 70px; padding: 14px; font-size: 14px; color: #777; margin-left: 330px; }
+</style></head><body>
+<div class="g-title"><span class="step">Bước 3</span>Mở trang quản lý extension và bật Developer mode</div>
+<div class="chrome"><span>⬅ ➡ ⟳</span><span class="addr" id="addr">brave://extensions</span></div>
+<div class="page">
+  <div class="hdr"><h1>Extensions</h1><span class="search">🔍 Search extensions</span>
+    <span class="dev" id="dev">Developer mode <span class="toggle"></span></span></div>
+  <div class="tools"><span id="load">Load unpacked</span><span>Pack extension</span><span>Update</span></div>
+  <div class="cards"><div class="card">(các extension khác của bạn)</div><div class="card"></div></div>
+</div>
+<div class="g-note">Hình minh hoạ</div>
+<script src="guide.js"></script>
+<script>
+  mark('#addr', 1, 'Gõ brave://extensions rồi Enter', 'right', { gap: 40 });
+  mark('#dev', 2, 'Bật Developer mode (Chế độ nhà phát triển)', 'bottom', { gap: 70, dx: -170 });
+  mark('#load', 3, 'Bấm "Load unpacked" (Tải tiện ích đã giải nén)', 'bottom', { gap: 160, dx: 120 });
+</script>
+</body></html>

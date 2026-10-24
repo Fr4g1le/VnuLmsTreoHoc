@@ -1,0 +1,34 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<link rel="stylesheet" href="guide.css">
+<style>
+  .win { margin: 24px 28px; border: 1px solid #c8c8c8; border-radius: 8px; overflow: hidden; width: 700px; box-shadow: 0 4px 16px rgba(0,0,0,.12); }
+  .win .top { background: #f3f3f3; padding: 8px 14px; font-size: 13px; color: #333; border-bottom: 1px solid #ddd; }
+  .win .path { background: #fff; padding: 8px 14px; font-size: 13px; border-bottom: 1px solid #eee; color: #555; }
+  .row { display: flex; gap: 10px; align-items: center; padding: 9px 16px; font-size: 14px; }
+  .row.sel { background: #cce8ff; }
+  .row .t { color: #777; margin-left: auto; font-size: 13px; }
+  .ctx { position: absolute; left: 330px; top: 214px; width: 290px; background: #f9f9f9; border: 1px solid #ccc; border-radius: 8px; box-shadow: 0 8px 22px rgba(0,0,0,.2); font-size: 14px; padding: 6px 0; }
+  .ctx div { padding: 8px 18px; } .ctx hr { border: 0; border-top: 1px solid #ddd; margin: 4px 0; }
+  .tip { position: absolute; left: 760px; top: 340px; width: 300px; font-size: 14px; background: #fff8c5; border: 1px solid #d4a72c; border-radius: 8px; padding: 10px 12px; }
+</style></head><body>
+<div class="g-title"><span class="step">Bước 2</span>Giải nén file ZIP vừa tải</div>
+<div class="win">
+  <div class="top">📁 Downloads (Tải xuống)</div>
+  <div class="path">Máy tính › Downloads</div>
+  <div class="row sel" id="zip">📦 VnuLmsTreoHoc-master.zip <span class="t">Tệp ZIP</span></div>
+  <div class="row">📄 tai-lieu.pdf <span class="t">PDF</span></div>
+  <div class="row">🖼️ anh.png <span class="t">PNG</span></div>
+</div>
+<div class="ctx">
+  <div>Mở</div>
+  <div id="extract"><b>Extract All… (Giải nén tất cả)</b></div>
+  <hr><div>Copy</div><div>Đổi tên</div><div>Xoá</div>
+</div>
+<div class="tip">💡 Giải nén xong sẽ có thư mục <b>VnuLmsTreoHoc-master</b>. Nên chuyển thư mục này ra chỗ cố định (ví dụ ổ D) và <b>đừng xoá</b>, vì trình duyệt đọc extension trực tiếp từ đó.</div>
+<div class="g-note">Hình minh hoạ – giao diện thật có thể khác một chút</div>
+<script src="guide.js"></script>
+<script>
+  mark('#zip', 1, 'Chuột phải vào file ZIP', 'right', { gap: 40, dy: -50 });
+  mark('#extract', 2, 'Chọn "Extract All…" rồi bấm Extract', 'right', { gap: 50 });
+</script>
+</body></html>

@@ -1,0 +1,26 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<link rel="stylesheet" href="guide.css">
+<style>
+  .chrome { background: #e9eaee; padding: 10px 14px; display: flex; gap: 10px; align-items: center; }
+  .chrome .addr { background: #fff; border-radius: 18px; padding: 7px 16px; font-size: 15px; flex: 1; }
+  .ic { font-size: 18px; padding: 2px 6px; border-radius: 6px; }
+  .pop { position: absolute; right: 30px; top: 118px; width: 330px; background: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.18); font-size: 14px; }
+  .pop .h { padding: 12px 16px; font-weight: 600; border-bottom: 1px solid #eee; }
+  .pop .it { display: flex; align-items: center; gap: 10px; padding: 10px 16px; }
+  .pop .it .pin { margin-left: auto; font-size: 16px; display: inline-block; width: 34px; text-align: center; font-family: "Segoe UI Emoji"; }
+  .logo { width: 22px; height: 22px; border-radius: 5px; background: #1f6feb; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+</style></head><body>
+<div class="g-title"><span class="step">Bước 5</span>Ghim biểu tượng extension lên thanh công cụ</div>
+<div class="chrome"><span>⬅ ➡ ⟳</span><span class="addr">lms.vnu.edu.vn</span><span class="ic" id="puzzle">🧩</span><span class="ic">🦁</span><span class="ic">⋮</span></div>
+<div class="pop">
+  <div class="h">Extensions</div>
+  <div class="it"><span class="logo">V</span>VNU LMS - Treo học<span class="pin" id="pin">📌</span></div>
+  <div class="it"><span class="logo" style="background:#999">?</span>(extension khác)<span class="pin">📌</span></div>
+</div>
+<div class="g-note">Hình minh hoạ – giao diện thật có thể khác một chút</div>
+<script src="guide.js"></script>
+<script>
+  mark('#puzzle', 1, 'Bấm biểu tượng mảnh ghép', 'left', { gap: 60, dy: 0 });
+  mark('#pin', 2, 'Bấm ghim cạnh "VNU LMS - Treo học"', 'bottom', { gap: 110, dx: -170, pad: 2 });
+</script>
+</body></html>

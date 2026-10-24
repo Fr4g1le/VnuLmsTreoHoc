@@ -2,6 +2,10 @@
 
 Extension cho Chrome / Brave / Edge giúp treo máy học trên [LMS VNU](https://lms.vnu.edu.vn): tự mở lần lượt các mục trong mục lục, treo đủ thời gian yêu cầu rồi chuyển sang mục kế tiếp.
 
+> **Mới dùng lần đầu?** Xem [**hướng dẫn từng bước có hình**](docs/HUONG-DAN.md), mũi tên chỉ vào đúng nút cần bấm.
+
+[![Bước 6: bắt đầu tự học](docs/img/06-bang-treo-hoc.png)](docs/HUONG-DAN.md)
+
 ## Tính năng
 
 - **Tự học theo mục lục:** đọc tiến trình học tập của bạn, lập danh sách các mục chưa đạt và mở lần lượt từng mục.
@@ -76,3 +80,5 @@ AI có thể sai, nhất là với câu hỏi lừa ("đáp án nào SAI") hoặ
 | `vnu-lms-treo-video.user.js` | Bản dùng cho Tampermonkey (không có AI) |
 
 Sửa `src/background.js` thì build lại bằng `npm install` rồi `npm run build`.
+
+Ảnh hướng dẫn trong `docs/img` được dựng từ các trang HTML trong `docs/src` bằng `powershell -File docs/render.ps1` (cần Brave).

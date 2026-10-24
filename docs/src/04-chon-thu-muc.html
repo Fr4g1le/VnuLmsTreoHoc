@@ -1,0 +1,35 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<link rel="stylesheet" href="guide.css">
+<style>
+  .dlg { margin: 24px 40px; width: 760px; border: 1px solid #bbb; border-radius: 8px; box-shadow: 0 8px 26px rgba(0,0,0,.2); overflow: hidden; font-size: 14px; }
+  .dlg .t { background: #f3f3f3; padding: 9px 14px; border-bottom: 1px solid #ddd; }
+  .dlg .path { padding: 8px 14px; border-bottom: 1px solid #eee; color: #444; }
+  .body { display: flex; height: 250px; }
+  .side { width: 180px; background: #fafafa; border-right: 1px solid #eee; padding: 10px; color: #444; line-height: 2; }
+  .list { flex: 1; } .list div { padding: 8px 16px; } .list .sel { background: #cce8ff; }
+  .foot { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 14px; border-top: 1px solid #ddd; background: #f6f6f6; }
+  .foot span { border: 1px solid #aaa; border-radius: 4px; padding: 5px 18px; background: #fff; }
+  .foot .ok { background: #0067c0; color: #fff; border-color: #0067c0; }
+  .tip { position: absolute; left: 820px; top: 120px; width: 250px; font-size: 14px; background: #fff8c5; border: 1px solid #d4a72c; border-radius: 8px; padding: 10px 12px; }
+</style></head><body>
+<div class="g-title"><span class="step">Bước 4</span>Chọn thư mục extension vừa giải nén</div>
+<div class="dlg">
+  <div class="t">Select the extension directory</div>
+  <div class="path">Downloads › VnuLmsTreoHoc-master</div>
+  <div class="body">
+    <div class="side">🖥️ Desktop<br>⬇️ Downloads<br>📄 Documents<br>💽 Ổ D:</div>
+    <div class="list">
+      <div class="sel" id="folder">📁 VnuLmsTreoHoc-master</div>
+      <div>📦 VnuLmsTreoHoc-master.zip</div>
+    </div>
+  </div>
+  <div class="foot"><span class="ok" id="ok">Select Folder</span><span>Cancel</span></div>
+</div>
+<div class="tip">💡 Chọn đúng thư mục có file <b>manifest.json</b> bên trong. Nếu mở vào thấy thêm một thư mục cùng tên, hãy chọn thư mục bên trong đó.</div>
+<div class="g-note">Hình minh hoạ – giao diện thật có thể khác một chút</div>
+<script src="guide.js"></script>
+<script>
+  mark('#folder', 1, 'Chọn thư mục VnuLmsTreoHoc-master', 'bottom', { gap: 90 });
+  mark('#ok', 2, 'Bấm "Select Folder" (Chọn thư mục)', 'left', { gap: 60, dy: 70 });
+</script>
+</body></html>

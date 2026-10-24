@@ -1,0 +1,40 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<link rel="stylesheet" href="guide.css">
+<style>
+  .gh { padding: 22px 28px; }
+  .addr { background: #f1f3f4; border-radius: 18px; padding: 8px 16px; font-size: 14px; color: #3c4043; width: 640px; margin-bottom: 20px; }
+  .repo { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #d0d7de; padding-bottom: 14px; }
+  .repo h2 { margin: 0; font-size: 22px; font-weight: 400; } .repo h2 b { font-weight: 600; }
+  .pub { border: 1px solid #d0d7de; border-radius: 12px; font-size: 12px; padding: 1px 8px; margin-left: 8px; color: #57606a; }
+  .bar { display: flex; justify-content: space-between; align-items: center; margin: 18px 0 0; }
+  .branch { border: 1px solid #d0d7de; border-radius: 6px; padding: 5px 12px; font-size: 14px; background: #f6f8fa; }
+  .code { background: #1f883d; color: #fff; border-radius: 6px; padding: 6px 14px; font-size: 14px; font-weight: 600; }
+  .menu { position: absolute; right: 28px; top: 240px; width: 330px; border: 1px solid #d0d7de; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.15); background: #fff; font-size: 14px; }
+  .menu .tabs { padding: 10px 14px; border-bottom: 1px solid #d0d7de; font-weight: 600; }
+  .menu .url { margin: 12px 14px; border: 1px solid #d0d7de; border-radius: 6px; padding: 5px 8px; color: #57606a; font-size: 13px; }
+  .menu .item { padding: 11px 14px; border-top: 1px solid #d0d7de; display: flex; gap: 10px; align-items: center; }
+  .files { margin-top: 14px; border: 1px solid #d0d7de; border-radius: 6px; width: 640px; font-size: 14px; }
+  .files div { padding: 8px 14px; border-top: 1px solid #eaeef2; } .files div:first-child { border-top: 0; background: #f6f8fa; }
+</style></head><body>
+<div class="g-title"><span class="step">Bước 1</span>Tải extension từ GitHub về máy</div>
+<div class="gh">
+  <div class="addr">🔒 github.com/Fr4g1le/VnuLmsTreoHoc</div>
+  <div class="repo"><h2>Fr4g1le / <b>VnuLmsTreoHoc</b><span class="pub">Public</span></h2></div>
+  <div class="bar"><span class="branch">⑂ master ▾</span><span class="code" id="code">&lt;&gt; Code ▾</span></div>
+  <div class="files">
+    <div>📄 manifest.json</div><div>📄 content.js</div><div>📄 background.js</div><div>📁 docs</div><div>📄 README.md</div>
+  </div>
+</div>
+<div class="menu">
+  <div class="tabs">Local</div>
+  <div class="url">https://github.com/Fr4g1le/VnuLmsTreoHoc.git</div>
+  <div class="item">🖥️ Open with GitHub Desktop</div>
+  <div class="item" id="zip">📦 Download ZIP</div>
+</div>
+<div class="g-note">Hình minh hoạ – giao diện thật có thể khác một chút</div>
+<script src="guide.js"></script>
+<script>
+  mark('#code', 1, 'Bấm nút xanh "Code"', 'left', { gap: 70 });
+  mark('#zip', 2, 'Chọn "Download ZIP"', 'left', { gap: 70 });
+</script>
+</body></html>

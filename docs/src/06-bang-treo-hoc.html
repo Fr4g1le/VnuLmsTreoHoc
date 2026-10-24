@@ -1,0 +1,19 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<link rel="stylesheet" href="guide.css"><link rel="stylesheet" href="lms.css">
+</head><body>
+<div class="g-title"><span class="step">Bước 6</span>Vào trang lớp học trên LMS và bắt đầu tự học</div>
+<script src="guide.js"></script><script src="panel-css.js"></script><script src="lms-mock.js"></script>
+<script>
+  lmsPage('<div class="lms-h">VIDEO 2: BỘ MÁY NHÀ NƯỚC CHXHCN VIỆT NAM</div><div class="video">▶ video bài giảng</div>');
+  const root = treoPanel(`<div class="muted">Đã dừng</div><div class="muted">Lớp: 35/151 mục hoàn thành</div>
+    <div class="bar"><i style="width:23%"></i></div>`, { foldOpen: true, queueOpen: true });
+  // Chờ CSS trong shadow DOM tải xong rồi mới vẽ mũi tên
+  afterStyles(() => {
+    mark(root.querySelector('.fab'), 1, 'Bấm nút "Treo học" ở góc dưới trái', 'right', { gap: 400 });
+    mark(root.querySelector('.fold summary'), 2, 'Bỏ tích bài không muốn học (nếu cần)', 'right', { gap: 60 });
+    mark(root.querySelector('.mute'), 3, 'Tắt tiếng nếu muốn làm việc khác', 'right', { gap: 60 });
+    mark(root.querySelector('.go'), 4, 'Bấm "Bắt đầu tự học" – xong!', 'right', { gap: 220, dy: -70 });
+  });
+</script>
+<div class="g-note">Ảnh dựng lại từ giao diện extension; tên bài là ví dụ</div>
+</body></html>

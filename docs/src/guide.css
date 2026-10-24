@@ -1,0 +1,10 @@
+/* Khung chung cho ảnh hướng dẫn: tiêu đề bước, ghi chú minh hoạ, khung đỏ, số thứ tự, mũi tên. */
+* { box-sizing: border-box; }
+html, body { margin: 0; background: #fff; font-family: "Segoe UI", system-ui, sans-serif; color: #1f2328; }
+.g-title { background: #0d1117; color: #fff; padding: 14px 22px; font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 12px; }
+.g-title .step { background: #e5383b; border-radius: 6px; padding: 2px 10px; font-size: 16px; }
+.g-note { position: absolute; right: 14px; top: 16px; font-size: 12px; color: #c9d1d9; background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 3px 8px; z-index: 9999; }
+.g-box { position: absolute; border: 3px solid #e5383b; border-radius: 8px; box-shadow: 0 0 0 5px rgba(229, 56, 59, .18); z-index: 9998; pointer-events: none; }
+.g-label { position: absolute; background: #e5383b; color: #fff; font: 600 15px "Segoe UI", sans-serif; padding: 6px 14px 6px 6px; border-radius: 22px; white-space: nowrap; z-index: 9999; display: flex; gap: 8px; align-items: center; box-shadow: 0 2px 8px rgba(0, 0, 0, .25); }
+.g-num { background: #fff; color: #e5383b; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; }
+.g-arrows { position: absolute; left: 0; top: 0; z-index: 9997; pointer-events: none; overflow: visible; }

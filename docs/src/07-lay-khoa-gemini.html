@@ -1,0 +1,40 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<link rel="stylesheet" href="guide.css">
+<style>
+  .chrome { background: #e9eaee; padding: 10px 14px; display: flex; gap: 10px; align-items: center; }
+  .chrome .addr { background: #fff; border-radius: 18px; padding: 7px 16px; font-size: 15px; width: 520px; }
+  .studio { display: flex; height: 440px; }
+  .nav { width: 220px; background: #f8f9fa; border-right: 1px solid #e3e3e3; padding: 18px 14px; font-size: 14px; line-height: 2.2; color: #444; }
+  .nav b { color: #1a73e8; }
+  .main { flex: 1; padding: 22px 28px; }
+  .main h1 { font-size: 22px; font-weight: 500; margin: 0 0 6px; }
+  .main p { color: #5f6368; font-size: 14px; margin: 0 0 18px; }
+  .btn { display: inline-block; background: #1a73e8; color: #fff; border-radius: 18px; padding: 8px 18px; font-size: 14px; font-weight: 600; }
+  table { margin-top: 22px; border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #e3e3e3; }
+  th { color: #5f6368; font-weight: 500; }
+  .key { font-family: Consolas, monospace; background: #f1f3f4; border-radius: 4px; padding: 2px 6px; }
+  .copy { border: 1px solid #dadce0; border-radius: 6px; padding: 4px 10px; font-size: 13px; }
+</style></head><body>
+<div class="g-title"><span class="step">Bước 7</span>Lấy khoá AI miễn phí của Google Gemini (cho phần trắc nghiệm)</div>
+<div class="chrome"><span>⬅ ➡ ⟳</span><span class="addr" id="addr">aistudio.google.com/apikey</span></div>
+<div class="studio">
+  <div class="nav">Google AI Studio<br>Chat<br><b>API keys</b><br>Rate limit<br>Usage</div>
+  <div class="main">
+    <h1>API keys</h1>
+    <p>Dùng khoá này để gọi Gemini API. Đừng chia sẻ khoá cho người khác.</p>
+    <span class="btn" id="create">+ Create API key</span>
+    <table>
+      <tr><th>Khoá</th><th>Project</th><th>Ngày tạo</th><th></th></tr>
+      <tr><td><span class="key">AIza…xxxx</span></td><td>Default Gemini Project</td><td>25/10/2026</td><td><span class="copy" id="copy">⧉ Copy</span></td></tr>
+    </table>
+  </div>
+</div>
+<div class="g-note">Hình minh hoạ – giao diện thật có thể khác một chút</div>
+<script src="guide.js"></script>
+<script>
+  mark('#addr', 1, 'Vào aistudio.google.com/apikey, đăng nhập Gmail', 'right', { gap: 40 });
+  mark('#create', 2, 'Bấm "Create API key"', 'right', { gap: 60 });
+  mark('#copy', 3, 'Bấm Copy để sao chép khoá (AIza…)', 'bottom', { gap: 70, dx: -170 });
+</script>
+</body></html>
