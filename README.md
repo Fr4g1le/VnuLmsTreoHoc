@@ -13,7 +13,8 @@ Extension cho Chrome / Brave / Edge giúp treo máy học trên [LMS VNU](https:
 - **Chống dừng khi đổi tab** và tự phát lại video khi bị dừng.
 - **Tắt tiếng nhanh** bằng một nút, để làm việc khác trong lúc treo.
 - **Bảng điều khiển:** chọn loại mục (video, PDF, bài đọc…), chọn bài học muốn chạy, xem danh sách, thời gian còn lại và nhật ký.
-- Không bao giờ mở bài kiểm tra / trắc nghiệm.
+- Chế độ tự học không bao giờ mở bài kiểm tra / trắc nghiệm.
+- **Trợ lý trắc nghiệm (AI):** khi bạn tự mở một bài trắc nghiệm, bấm **🤖 Gợi ý đáp án** để Claude đọc câu hỏi, đánh dấu đáp án gợi ý kèm giải thích ngắn. **✍ Điền gợi ý** chọn sẵn các đáp án đó; **không bao giờ tự nộp bài**. Gợi ý được lưu lại, lần sau gặp câu giống hệt sẽ dùng luôn mà không gọi AI.
 
 ## Cách hoạt động
 
@@ -52,11 +53,24 @@ Lưu ý:
 - Không thu nhỏ cửa sổ và không để máy ngủ trong lúc treo.
 - Nếu bị đẩy về trang chủ, extension tự quay lại lớp và chạy tiếp.
 
+### Trợ lý trắc nghiệm (AI)
+
+1. Tạo khoá API Claude tại [platform.claude.com](https://platform.claude.com/settings/keys) (cần nạp tiền vào tài khoản API; một bài 10 câu chỉ tốn vài trăm đồng).
+2. Mở bảng **Treo học** → **⚙ Khoá API** (hoặc chuột phải biểu tượng extension → **Options**), dán khoá, chọn model, bấm **Lưu**. Khoá chỉ lưu trong trình duyệt, trang LMS không đọc được.
+3. Mở bài trắc nghiệm, bấm **LÀM BÀI**, rồi bấm **🤖 Gợi ý đáp án** trong bảng.
+4. Xem gợi ý (khung xanh + giải thích dưới mỗi câu), bấm **✍ Điền gợi ý** hoặc tự chọn, kiểm tra lại rồi **tự bấm Nộp bài**.
+
+AI có thể sai, nhất là với câu hỏi lừa ("đáp án nào SAI") hoặc kiến thức riêng của giáo trình, nên hãy đọc lại trước khi nộp. Tính năng AI chỉ có ở bản extension, không có ở bản Tampermonkey.
+
 ## Các file
 
 | File | Vai trò |
 |---|---|
 | `manifest.json` | Khai báo extension |
-| `content.js` | Logic treo học và bảng điều khiển (chạy trong trang LMS) |
-| `bridge.js`, `background.js` | Bấm biểu tượng extension để mở/đóng bảng điều khiển |
-| `vnu-lms-treo-video.user.js` | Bản dùng cho Tampermonkey |
+| `content.js` | Logic treo học, trợ lý trắc nghiệm và bảng điều khiển (chạy trong trang LMS) |
+| `bridge.js` | Cầu nối giữa trang và background |
+| `background.js` | Gọi Claude (đã đóng gói sẵn từ `src/background.js`), mở/đóng bảng khi bấm biểu tượng |
+| `options.html`, `options.js` | Trang nhập khoá API và chọn model |
+| `vnu-lms-treo-video.user.js` | Bản dùng cho Tampermonkey (không có AI) |
+
+Sửa `src/background.js` thì build lại bằng `npm install` rồi `npm run build`.

@@ -1,0 +1,12 @@
+{
+  "name": "vnu-lms-treo-hoc",
+  "private": true,
+  "version": "2.3.0",
+  "scripts": {
+    "build": "esbuild src/background.js --bundle --format=iife --platform=browser --target=chrome120 --minify --outfile=background.js"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "1.3.0",
+    "esbuild": "0.28.2"
+  }
+}

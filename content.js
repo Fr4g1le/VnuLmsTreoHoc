@@ -323,7 +323,108 @@
     log('Đã dừng.');
   }
 
-  // ---------- 3. Bảng điều khiển ----------
+  // ---------- 3. Trợ lý trắc nghiệm (AI) ----------
+  // Trang làm bài: mỗi câu là .question-item, đề bài ở .question-title, đáp án là radio/checkbox trong
+  // .question-content label. Gợi ý được lưu theo nội dung câu hỏi (LS_AI) để lần sau gặp lại không phải hỏi AI.
+  // Chỉ gợi ý và điền khi bạn bấm; không bao giờ tự nộp bài.
+  const LS_AI = 'vnuTreoAi';
+  const Q = { busy: false, status: '' };
+  const clean = s => (s || '').replace(/\s+/g, ' ').trim();
+
+  function readQuiz() {
+    const out = [];
+    for (const item of document.querySelectorAll('.question-item')) {
+      const inputs = [...item.querySelectorAll('.question-content input[type=radio], .question-content input[type=checkbox]')];
+      if (!inputs.length || !item.offsetParent) continue;
+      const title = clean(item.querySelector('.question-title') && item.querySelector('.question-title').innerText);
+      const answers = inputs.map(i => clean(i.closest('label') && i.closest('label').innerText));
+      const num = item.querySelector('.question-num');
+      const n = ((num && num.textContent.match(/\d+/)) || [String(out.length + 1)])[0];
+      out.push({ item, inputs, n, title, answers, multi: inputs.some(i => i.type === 'checkbox'),
+        key: norm(title) + '||' + answers.map(norm).sort().join('|') });
+    }
+    return out;
+  }
+
+  let aiSeq = 0;
+  const aiWait = {};
+  const askAI = questions => new Promise(resolve => {
+    const id = ++aiSeq;
+    aiWait[id] = resolve;
+    window.postMessage({ vnuTreo: 'ai-suggest', id, questions }, location.origin);
+    setTimeout(() => {
+      if (!aiWait[id]) return;
+      delete aiWait[id];
+      resolve({ ok: false, error: 'Không nhận được phản hồi. Hãy chắc chắn đã nạp extension (bản Tampermonkey không có AI).' });
+    }, 180000);
+  });
+
+  function quizStatus(msg) { Q.status = msg; render(); }
+
+  function annotate(q, s) {
+    q.inputs.forEach((inp, i) => {
+      const label = inp.closest('label');
+      const hit = s.picks.includes(q.answers[i]);
+      label.style.outline = hit ? '2px solid #1f6feb' : '';
+      label.style.borderRadius = hit ? '4px' : '';
+    });
+    let note = q.item.querySelector('.vnu-ai-note');
+    if (!note) {
+      note = document.createElement('div');
+      note.className = 'vnu-ai-note';
+      note.style.cssText = 'clear:both;margin:8px 16px 0;padding:6px 10px;border-left:3px solid #1f6feb;' +
+        'background:#f0f6ff;color:#1f2328;font-size:13px;';
+      q.item.querySelector('.question-content').after(note);
+    }
+    const letters = s.picks.map(p => String.fromCharCode(65 + q.answers.indexOf(p))).join(', ');
+    note.textContent = `🤖 Gợi ý: ${letters || '?'} (độ tin cậy ${s.confidence}) — ${s.why}`;
+  }
+
+  async function suggestQuiz() {
+    const qs = readQuiz();
+    if (!qs.length) return quizStatus('Không thấy câu hỏi trắc nghiệm trên trang.');
+    const bank = readJSON(LS_AI, {});
+    const todo = qs.filter(q => !bank[q.key]);
+    Q.busy = true;
+    quizStatus(todo.length ? `Đang hỏi Claude ${todo.length} câu…` : 'Dùng gợi ý đã lưu…');
+    try {
+      if (todo.length) {
+        const res = await askAI(todo.map(q => ({ n: q.n, question: q.title, answers: q.answers, multi: q.multi })));
+        if (!res.ok) throw new Error(res.error);
+        for (const a of res.answers) {
+          const q = todo.find(x => x.n === String(a.n));
+          if (!q) continue;
+          bank[q.key] = { picks: a.choices.filter(i => q.answers[i] != null).map(i => q.answers[i]), why: a.why, confidence: a.confidence };
+        }
+        writeJSON(LS_AI, bank);
+      }
+      let shown = 0;
+      for (const q of qs) if (bank[q.key]) { annotate(q, bank[q.key]); shown++; }
+      Q.busy = false;
+      quizStatus(`Đã gợi ý ${shown}/${qs.length} câu. Xem lại, rồi bấm "Điền gợi ý" hoặc tự chọn.`);
+    } catch (e) {
+      Q.busy = false;
+      quizStatus('Lỗi: ' + e.message);
+    }
+  }
+
+  function fillQuiz() {
+    const bank = readJSON(LS_AI, {});
+    let n = 0;
+    for (const q of readQuiz()) {
+      const s = bank[q.key];
+      if (!s) continue;
+      q.inputs.forEach((inp, i) => {
+        const want = s.picks.includes(q.answers[i]);
+        // click() để trang ghi nhận đáp án như khi bạn tự bấm
+        if (want !== inp.checked && (want || inp.type === 'checkbox')) inp.click();
+      });
+      n++;
+    }
+    quizStatus(n ? `Đã điền ${n} câu. Kiểm tra lại rồi tự bấm "Nộp bài".` : 'Chưa có gợi ý nào, bấm "Gợi ý đáp án" trước.');
+  }
+
+  // ---------- 4. Bảng điều khiển ----------
   const CSS = `
     :host { all: initial; }
     * { box-sizing: border-box; font-family: system-ui, "Segoe UI", Roboto, sans-serif; }
@@ -366,6 +467,12 @@
     li.fail, li.error { color: #cf222e; }
     pre { white-space: pre-wrap; font-size: 11px; margin: 6px 0 0; max-height: 160px; overflow: auto; }
     hr { border: 0; border-top: 1px solid #eaeef2; }
+    .qrow { display: flex; gap: 6px; margin: 8px 0; }
+    .qrow button { flex: 1; padding: 6px; border-radius: 6px; border: 1px solid #d0d7de; background: #f6f8fa;
+      cursor: pointer; font-size: 12px; white-space: nowrap; }
+    .qrow button.qsuggest { background: #8250df; border-color: #8250df; color: #fff; font-weight: 600; }
+    .qrow button:disabled { opacity: .5; cursor: default; }
+    .qstatus { font-size: 12px; }
   `;
   const ICON = { pending: '○', holding: '▶', checking: '…', done: '✓', fail: '✗', error: '⚠' };
 
@@ -382,6 +489,11 @@
         <header><b>Treo học VNU</b><button class="x" title="Thu gọn">×</button></header>
         <section class="status"></section>
         <div class="row"><button class="primary go"></button><button class="scan">↻ Quét lại</button><button class="mute"></button></div>
+        <details class="quiz" open><summary>Trợ lý trắc nghiệm (AI)</summary>
+          <div class="qstatus"></div>
+          <div class="qrow"><button class="qsuggest">🤖 Gợi ý đáp án</button><button class="qfill">✍ Điền gợi ý</button><button class="qkey">⚙ Khoá API</button></div>
+          <div class="muted">Không tự nộp bài. Gợi ý được lưu lại: lần sau gặp câu giống hệt sẽ dùng luôn, không tốn tiền API.</div>
+        </details>
         <details class="cfg"><summary>Cài đặt</summary>
           <div class="muted">Loại mục cần học:</div>
           ${box('kinds.video', 'Video')}${box('kinds.pdf', 'PDF / tài liệu (treo theo thời gian bên dưới)')}
@@ -424,6 +536,9 @@
       root.querySelector('[data-k="muteVideo"]').checked = cfg.muteVideo;
       render();
     });
+    $('.qsuggest').addEventListener('click', () => suggestQuiz());
+    $('.qfill').addEventListener('click', () => fillQuiz());
+    $('.qkey').addEventListener('click', () => window.postMessage({ vnuTreo: 'open-options' }, location.origin));
 
     const getK = k => k.split('.').reduce((o, p) => o[p], cfg);
     const setK = (k, v) => { const p = k.split('.'); const last = p.pop(); p.reduce((o, q) => o[q], cfg)[last] = v; };
@@ -500,14 +615,27 @@
         ${cfg.skipFolders.includes(f.id) ? '' : 'checked'}><span>${esc(f.title)}</span></label>`).join('');
     }
     $('.logs').textContent = S.logs.join('\n');
+
+    const nq = readQuiz().length;
+    if (!nq && !Q.busy) Q.status = '';
+    $('.qstatus').textContent = Q.status || (nq ? `Trang có ${nq} câu hỏi.` : 'Mở một bài trắc nghiệm (bấm "LÀM BÀI") để dùng.');
+    $('.qsuggest').disabled = Q.busy || !nq;
+    $('.qfill').disabled = Q.busy || !nq;
   }
 
-  // Bấm biểu tượng extension trên thanh công cụ -> bridge.js gửi tin này
   window.addEventListener('message', e => {
-    if (e.source === window && e.data && e.data.vnuTreo === 'toggle-panel') { buildUI(); if (ui) ui.toggle(); }
+    if (e.source !== window || !e.data) return;
+    // Bấm biểu tượng extension trên thanh công cụ -> bridge.js gửi tin này
+    if (e.data.vnuTreo === 'toggle-panel') { buildUI(); if (ui) ui.toggle(); }
+    // Kết quả gợi ý từ background (qua bridge.js)
+    if (e.data.vnuTreo === 'ai-result' && aiWait[e.data.id]) {
+      const done = aiWait[e.data.id];
+      delete aiWait[e.data.id];
+      done(e.data);
+    }
   });
 
-  // ---------- 4. Khởi động ----------
+  // ---------- 5. Khởi động ----------
   async function resumeIfNeeded() {
     const run = readJSON(LS_RUN, {});
     if (!run.active) return;
@@ -524,7 +652,7 @@
 
   const start = () => { buildUI(); resumeIfNeeded(); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
-  setInterval(() => { buildUI(); tickVideo(); answerLmsAlert(); }, 3000);
+  setInterval(() => { buildUI(); tickVideo(); answerLmsAlert(); if (ui && !ui.panel.hidden && !S.active) render(); }, 3000);
   setInterval(() => cfg.keepAlive && pokeActivity(), 20000);
   setInterval(() => S.active && render(), 1000);
 })();
