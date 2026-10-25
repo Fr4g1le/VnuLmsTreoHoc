@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VNU LMS - Treo học
 // @namespace    vnu-lms-keepalive
-// @version      2.5
+// @version      2.6
 // @description  Tự học lần lượt các mục trên LMS VNU cho đến khi đạt yêu cầu, giữ video chạy khi treo máy.
 // @match        https://lms.vnu.edu.vn/*
 // @run-at       document-start
@@ -33,7 +33,6 @@
   const DEFAULTS = {
     keepAlive: true,
     resumeVideo: true,
-    loopVideo: true,
     muteVideo: false,
     refreshProgress: true,
     kinds: { video: true, pdf: true, text: true, other: false },
@@ -107,18 +106,19 @@
   }
   new MutationObserver(answerLmsAlert).observe(document, { childList: true, subtree: true });
 
+  // Tắt tiếng bằng âm lượng 0 thay vì muted: trình duyệt có thể tự dừng video bị muted khi tab nằm nền,
+  // mà LMS chỉ tính giờ cho video khi video thật sự đang chạy.
   function applyMute() {
-    for (const m of document.querySelectorAll('video, audio')) m.muted = cfg.muteVideo;
+    for (const m of document.querySelectorAll('video, audio')) {
+      m.volume = cfg.muteVideo ? 0 : 1;
+      if (!cfg.muteVideo) m.muted = false;
+    }
   }
   function tickVideo() {
-    if (cfg.muteVideo) for (const a of document.querySelectorAll('audio')) a.muted = true;
+    for (const m of document.querySelectorAll('video, audio')) if (cfg.muteVideo && m.volume !== 0) m.volume = 0;
     for (const v of document.querySelectorAll('video')) {
-      if (cfg.muteVideo) v.muted = true;
-      if (v.ended) {
-        if (S.active && cfg.loopVideo) { v.currentTime = 0; playVideo(v); }
-        continue;
-      }
-      if (cfg.resumeVideo && v.paused && v.readyState > 0) playVideo(v);
+      // Hết video thì thôi: xem lại đoạn cũ không được LMS tính thêm giờ
+      if (!v.ended && cfg.resumeVideo && v.paused && v.readyState > 0) playVideo(v);
     }
   }
   function playVideo(v) {
@@ -233,9 +233,24 @@
     }
   }
 
+  // Tab của bố cục rộng ("Nội dung", "Tiến trình học tập"…). Bố cục hẹp dùng link "#tab1" – bấm vào sẽ về trang chủ.
+  const wideTab = re => [...document.querySelectorAll('a.nav-link')].find(e =>
+    e.offsetParent && re.test(e.innerText.trim()) && !(e.getAttribute('href') || '').startsWith('#'));
+
+  // Cây mục lục chỉ hiện ở tab "Nội dung": đang ở tab khác (ví dụ Tiến trình học tập) thì chuyển về trước.
+  async function showContentTab() {
+    if (document.querySelector('.__lesson-name > a, .__lesson-name-child') &&
+        [...document.querySelectorAll('.__lesson-name > a, .__lesson-name-child')].some(e => e.offsetParent)) return;
+    const tab = wideTab(/^nội dung$/i);
+    if (!tab) return;
+    tab.click();
+    await sleep(2500);
+  }
+
   async function openItem(item) {
     const want = norm(item.title);
     for (let attempt = 0; attempt < 3; attempt++) {
+      await showContentTab();
       await expandTree();
       const anchors = [...document.querySelectorAll('.__lesson-name > a')].filter(a => a.offsetParent);
       let hits = anchors.filter(a => norm(a.textContent) === want);
@@ -255,13 +270,66 @@
     return false;
   }
 
-  async function hold(item) {
+  const hold = item => (item.kind === 'video' ? holdVideo(item) : holdClock(item));
+
+  // PDF, bài đọc…: LMS tính theo thời gian mở mục, nên chỉ cần chờ đủ giờ.
+  async function holdClock(item) {
     S.endsAt = Date.now() + item.needMs;
     while (Date.now() < S.endsAt) {
       if (!S.active) return false;
       render();
       await sleep(1000);
     }
+    return true;
+  }
+
+  // Video: LMS chỉ cộng giờ khi video phát tới đoạn CHƯA XEM (thử thực tế: phát lại đoạn cũ 2 phút chỉ được
+  // tính 0,4 phút; phát đoạn mới 2 phút được tính 2,1 phút). Nên giữ đến khi phần mới xem đủ số phút còn thiếu;
+  // video đứng lại thì chờ chứ không rời mục. Mở lại thì tua tới chỗ đã xem xa nhất (không bao giờ tua quá đó).
+  const LS_VIDEO = 'vnuTreoVideoMax';
+  const contentVideo = () => document.querySelector('app-class-content-view video');
+
+  async function holdVideo(item) {
+    let v = null;
+    for (let i = 0; i < 30 && !(v = contentVideo()); i++) await sleep(500);
+    if (!v) return holdClock(item);
+    for (let i = 0; i < 30 && !(v.readyState > 0); i++) await sleep(500);
+    const maxes = readJSON(LS_VIDEO, {});
+    const known = maxes[item.id] || 0;
+    if (known > v.currentTime + 5 && (!v.duration || known < v.duration - 5)) {
+      v.currentTime = known;
+      log(`Tua tới ${fmt(known * 1000)}: đoạn trước đã xem rồi, xem lại không được tính.`);
+    }
+    const needSec = item.needMs / 1000;
+    let maxPos = Math.max(known, v.currentTime), last = v.currentTime, gained = 0;
+    let lastMove = Date.now(), stallLogged = false, lastSave = 0;
+    while (gained < needSec) {
+      if (!S.active) return false;
+      await sleep(1000);
+      v = contentVideo() || v;
+      const pos = v.currentTime;
+      if (pos > maxPos) {
+        // Chỉ cộng khi phát liên tục (bước nhỏ); nhảy cóc thì không tính, giống LMS
+        if (pos - last < 15) gained += pos - Math.max(last, maxPos);
+        maxPos = pos;
+      }
+      if (pos !== last) { lastMove = Date.now(); stallLogged = false; }
+      last = pos;
+      if (Date.now() - lastSave > 10000) { maxes[item.id] = maxPos; writeJSON(LS_VIDEO, maxes); lastSave = Date.now(); }
+      S.endsAt = Date.now() + Math.max(0, needSec - gained) * 1000;
+      render();
+      if (v.ended || (v.duration && pos >= v.duration - 1)) {
+        if (gained < needSec) log('Video đã hết mà có thể chưa đủ giờ; sẽ kiểm tra với server.');
+        break;
+      }
+      if (Date.now() - lastMove > 60000 && !stallLogged) {
+        stallLogged = true;
+        log('Video đứng yên hơn 1 phút (bị dừng?), đang chờ phát lại – chưa rời mục.');
+        playVideo(v);
+      }
+    }
+    maxes[item.id] = maxPos;
+    writeJSON(LS_VIDEO, maxes);
     return true;
   }
 
@@ -285,12 +353,9 @@
 
   // Thầy cô dặn học xong mỗi bài phải mở tab "Tiến trình học tập". Thử nghiệm: server đã lưu hoàn thành
   // ngay khi rời mục, còn tab này tải lại tiến trình để cây mục lục hiện dấu ✓. Vẫn làm cho chắc.
-  // Chỉ bấm tab của bố cục rộng: ở bố cục hẹp (< 992px) tab là link "#tab1"/"#tab2", bấm vào sẽ về trang chủ.
   async function visitProgressTab() {
-    const tab = re => [...document.querySelectorAll('a.nav-link')].find(e =>
-      e.offsetParent && re.test(e.innerText.trim()) && !(e.getAttribute('href') || '').startsWith('#'));
-    const progress = tab(/^tiến trình học tập$/i);
-    const content = tab(/^nội dung$/i);
+    const progress = wideTab(/^tiến trình học tập$/i);
+    const content = wideTab(/^nội dung$/i);
     if (!progress || !content) return;
     progress.click();
     await sleep(4000);
@@ -545,7 +610,6 @@
           ${box('refreshProgress', 'Mở tab "Tiến trình học tập" sau mỗi mục để cập nhật')}
           ${box('keepAlive', 'Tự xác nhận "Bạn có đang học tập không ?" và chống dừng khi đổi tab')}
           ${box('resumeVideo', 'Tự phát lại video khi bị dừng')}
-          ${box('loopVideo', 'Video ngắn hơn thời gian yêu cầu thì phát lại từ đầu')}
           ${box('muteVideo', 'Tắt tiếng video')}
           <div class="muted">Đổi loại mục hoặc chọn bài xong, bấm "Quét lại".</div>
         </details>
