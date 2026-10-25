@@ -136,7 +136,49 @@ function describeError(e) {
   return e.message || String(e);
 }
 
+// ---------- Kiểm tra bản mới trên GitHub Releases (tối đa 6 tiếng một lần) ----------
+const REPO = 'Fr4g1le/VnuLmsTreoHoc';
+const CHECK_EVERY = 6 * 3600 * 1000;
+
+function isNewer(a, b) {
+  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0;
+  }
+  return false;
+}
+
+async function latestRelease() {
+  const { upd } = await chrome.storage.local.get('upd');
+  if (upd && Date.now() - upd.checkedAt < CHECK_EVERY) return upd;
+  try {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } });
+    if (!r.ok) return upd || null;
+    const j = await r.json();
+    const zip = (j.assets || []).find(a => /\.zip$/i.test(a.name));
+    const info = { checkedAt: Date.now(), latest: String(j.tag_name || '').replace(/^v/i, ''), url: j.html_url, zip: zip && zip.browser_download_url };
+    await chrome.storage.local.set({ upd: info });
+    return info;
+  } catch (e) {
+    return upd || null; // mất mạng: dùng kết quả lần trước
+  }
+}
+
+async function updateStatus() {
+  const current = chrome.runtime.getManifest().version;
+  const info = await latestRelease();
+  const hasUpdate = !!(info && info.latest && isNewer(info.latest, current));
+  chrome.action.setBadgeText({ text: hasUpdate ? 'NEW' : '' });
+  if (hasUpdate) chrome.action.setBadgeBackgroundColor({ color: '#1a7f37' });
+  return { hasUpdate, current, latest: info && info.latest, url: info && info.url, zip: info && info.zip };
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg && msg.type === 'check-update') {
+    updateStatus().then(sendResponse);
+    return true;
+  }
   if (msg && msg.type === 'ai-suggest') {
     suggest(msg.questions)
       .then(answers => sendResponse({ ok: true, answers }))

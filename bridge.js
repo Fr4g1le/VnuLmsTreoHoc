@@ -13,3 +13,8 @@ window.addEventListener('message', e => {
   }
   if (vnuTreo === 'open-options') chrome.runtime.sendMessage({ type: 'open-options' });
 });
+
+// Mỗi lần mở trang LMS: hỏi background có bản mới không (background chỉ hỏi GitHub tối đa 6 tiếng một lần)
+chrome.runtime.sendMessage({ type: 'check-update' })
+  .then(res => res && window.postMessage({ vnuTreo: 'update', ...res }, location.origin))
+  .catch(() => {});

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VNU LMS - Treo học
 // @namespace    vnu-lms-keepalive
-// @version      2.6
+// @version      2.7
 // @description  Tự học lần lượt các mục trên LMS VNU cho đến khi đạt yêu cầu, giữ video chạy khi treo máy.
 // @match        https://lms.vnu.edu.vn/*
 // @run-at       document-start
@@ -578,6 +578,17 @@
     .qrow button.qsuggest { background: #8250df; border-color: #8250df; color: #fff; font-weight: 600; }
     .qrow button:disabled { opacity: .5; cursor: default; }
     .qstatus { font-size: 12px; }
+    .note:empty { display: none; }
+    .note { padding: 10px 12px 0; }
+    .note .tip { background: #ddf4ff; border: 1px solid #54aeff; color: #0a3069; border-radius: 6px; padding: 8px 10px; font-size: 12px; }
+    .note .bad { background: #ffebe9; border: 1px solid #ff8182; color: #82071e; }
+    .update .tip { background: #dafbe1; border-color: #4ac26b; color: #116329; }
+    .note .links { margin: 6px 0; }
+    .note a { color: inherit; font-weight: 600; }
+    .note summary { font-size: 12px; margin-top: 6px; }
+    .note ol { max-height: none; margin: 6px 0 0; padding-left: 18px; }
+    .note code { background: rgba(175,184,193,.3); border-radius: 4px; padding: 0 4px; font-family: Consolas, monospace; }
+    .note button { margin-top: 8px; padding: 4px 10px; border-radius: 6px; border: 1px solid #d0d7de; background: #fff; cursor: pointer; font-size: 12px; }
   `;
   const ICON = { pending: '○', holding: '▶', checking: '…', done: '✓', fail: '✗', error: '⚠' };
 
@@ -592,6 +603,8 @@
       <button class="fab"></button>
       <div class="panel" hidden>
         <header><b>Treo học VNU</b><button class="x" title="Thu gọn">×</button></header>
+        <section class="note update"></section>
+        <section class="note sleep"></section>
         <section class="status"></section>
         <div class="row"><button class="primary go"></button><button class="scan">↻ Quét lại</button><button class="mute"></button></div>
         <details class="quiz" open><summary>Trợ lý trắc nghiệm (AI)</summary>
@@ -643,6 +656,17 @@
     $('.qsuggest').addEventListener('click', () => suggestQuiz());
     $('.qfill').addEventListener('click', () => fillQuiz());
     $('.qkey').addEventListener('click', () => window.postMessage({ vnuTreo: 'open-options' }, location.origin));
+    $('.update').addEventListener('click', e => {
+      if (!e.target.classList.contains('updlater')) return;
+      writeJSON(LS_UPD_SKIP, U.latest);
+      render();
+    });
+    $('.sleep').addEventListener('click', e => {
+      if (!e.target.classList.contains('sleepok')) return;
+      writeJSON(LS_SLEEP_OK, true);
+      Z.reason = '';
+      render();
+    });
 
     const getK = k => k.split('.').reduce((o, p) => o[p], cfg);
     const setK = (k, v) => { const p = k.split('.'); const last = p.pop(); p.reduce((o, q) => o[q], cfg)[last] = v; };
@@ -673,10 +697,12 @@
     if (!ui) return;
     const { $ } = ui;
     const remaining = S.active && S.endsAt ? S.endsAt - Date.now() : 0;
-    ui.fab.textContent = (cfg.muteVideo ? '🔇 ' : '') +
+    ui.fab.textContent = (showUpdate() ? '⬆ ' : '') + (Z.reason ? '💤 ' : '') + (cfg.muteVideo ? '🔇 ' : '') +
       (S.active ? `Treo ▶ ${remaining > 0 ? fmt(remaining) : '…'}` : 'Treo học');
     ui.fab.classList.toggle('run', S.active);
     if (ui.panel.hidden) return;
+    renderUpdate();
+    renderSleep();
 
     const go = $('.go');
     go.textContent = S.active ? '■ Dừng' : '▶ Bắt đầu tự học';
@@ -731,6 +757,8 @@
     if (e.source !== window || !e.data) return;
     // Bấm biểu tượng extension trên thanh công cụ -> bridge.js gửi tin này
     if (e.data.vnuTreo === 'toggle-panel') { buildUI(); if (ui) ui.toggle(); }
+    // Có bản mới trên GitHub Releases (background kiểm tra, bridge.js chuyển vào)
+    if (e.data.vnuTreo === 'update') { U = e.data; render(); }
     // Kết quả gợi ý từ background (qua bridge.js)
     if (e.data.vnuTreo === 'ai-result' && aiWait[e.data.id]) {
       const done = aiWait[e.data.id];
@@ -738,6 +766,69 @@
       done(e.data);
     }
   });
+
+  // ---------- Thông báo bản mới ----------
+  const LS_UPD_SKIP = 'vnuTreoUpdSkip';
+  let U = null;
+  const showUpdate = () => U && U.hasUpdate && readJSON(LS_UPD_SKIP, '') !== U.latest;
+
+  function renderUpdate() {
+    const sig = showUpdate() ? U.latest : '';
+    if (sig === ui.updSig) return;
+    ui.updSig = sig;
+    ui.$('.update').innerHTML = sig ? `<div class="tip">⬆ Có bản mới <b>v${esc(U.latest)}</b> (bạn đang dùng v${esc(U.current)}).
+        <div class="links"><a href="${esc(U.zip || U.url)}" target="_blank" rel="noopener">Tải bản mới</a>
+        · <a href="${esc(U.url)}" target="_blank" rel="noopener">Xem có gì mới</a></div>
+        <div>Cách cập nhật: giải nén file zip <b>đè lên thư mục cũ</b>, rồi bấm ⟳ ở trang quản lý extension.</div>
+        <button class="updlater">Để sau</button></div>` : '';
+  }
+
+  // ---------- Tab bị trình duyệt cho "ngủ" ----------
+  // Trang web không biết được trình duyệt có bật Memory Saver / Sleeping tabs hay không, nên: nhắc trước một lần,
+  // và phát hiện khi đã xảy ra (tab bị giải phóng rồi tải lại, bị đóng băng, hoặc đồng hồ bị ngắt quãng lâu).
+  const LS_SLEEP_OK = 'vnuTreoSleepTipOk';
+  const Z = { reason: '' };
+  const browserName = () => (navigator.brave ? 'Brave' : /Edg\//.test(navigator.userAgent) ? 'Edge' : 'Chrome');
+
+  function sleepFixSteps() {
+    const keep = 'Nhập <code>lms.vnu.edu.vn</code> rồi bấm <b>Add</b>.';
+    if (browserName() === 'Brave') return [
+      'Mở tab mới, gõ <code>brave://settings/system</code> rồi Enter.',
+      'Ở mục <b>Memory Saver</b> (Tiết kiệm bộ nhớ), phần "Always keep these sites active", bấm <b>Add</b>.', keep,
+      'Cũng trong trang đó, tắt <b>Energy Saver</b> hoặc chọn chỉ bật khi pin yếu.'];
+    if (browserName() === 'Edge') return [
+      'Mở tab mới, gõ <code>edge://settings/system</code> rồi Enter.',
+      'Ở mục <b>Sleeping tabs</b> (Tab ngủ), phần "Never put these sites to sleep", bấm <b>Add</b>.', keep,
+      'Tắt <b>Efficiency mode</b> (Chế độ hiệu quả) hoặc chỉ bật khi pin yếu.'];
+    return [
+      'Mở tab mới, gõ <code>chrome://settings/performance</code> rồi Enter.',
+      'Ở mục <b>Memory Saver</b> (Tiết kiệm bộ nhớ), phần "Always keep these sites active", bấm <b>Add</b>.', keep,
+      'Tắt <b>Energy Saver</b> hoặc chọn chỉ bật khi pin yếu.'];
+  }
+
+  function sleepWarn(reason) {
+    if (Z.reason !== reason) log('💤 ' + reason);
+    Z.reason = reason;
+    render();
+  }
+  document.addEventListener('resume', () => {
+    if (S.active) sleepWarn('Trình duyệt vừa "đóng băng" tab LMS một lúc; thời gian đó có thể không được tính.');
+  });
+
+  function renderSleep() {
+    const tipOk = readJSON(LS_SLEEP_OK, false);
+    const sig = Z.reason + '|' + tipOk;
+    if (sig === ui.sleepSig) return;
+    ui.sleepSig = sig;
+    const box = ui.$('.sleep');
+    if (!Z.reason && tipOk) { box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="${Z.reason ? 'warn bad' : 'tip'}">
+        ${Z.reason ? '💤 ' + esc(Z.reason) + ' Hãy sửa để không bị lặp lại:'
+          : '💤 Trình duyệt có thể cho tab LMS "ngủ" khi bạn treo lâu ở tab khác hoặc thu nhỏ cửa sổ, làm việc học bị ngưng. Nên làm một lần:'}
+        <details ${Z.reason ? 'open' : ''}><summary>Cách sửa trên ${browserName()}</summary>
+          <ol>${sleepFixSteps().map(s => `<li>${s}</li>`).join('')}</ol></details>
+        <button class="sleepok">${Z.reason ? 'Đã sửa, ẩn cảnh báo' : 'Đã làm, ẩn nhắc nhở'}</button></div>`;
+  }
 
   // ---------- 5. Khởi động ----------
   async function resumeIfNeeded() {
@@ -754,9 +845,24 @@
     }
   }
 
-  const start = () => { buildUI(); resumeIfNeeded(); };
+  const start = () => {
+    buildUI();
+    if (document.wasDiscarded && readJSON(LS_RUN, {}).active) {
+      sleepWarn('Trình duyệt đã cho tab LMS ngủ (giải phóng tab). Extension đã tự chạy tiếp, nhưng lúc tab ngủ không được tính giờ.');
+    }
+    resumeIfNeeded();
+  };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
   timer.every(3000, () => { buildUI(); tickVideo(); answerLmsAlert(); if (ui && !ui.panel.hidden && !S.active) render(); });
   timer.every(20000, () => cfg.keepAlive && pokeActivity());
-  timer.every(1000, () => S.active && render());
+  // Đồng hồ Worker nhịp 1 giây: nếu khựng lại lâu nghĩa là cả tab đã bị ngưng (tab ngủ hoặc máy ngủ)
+  let lastBeat = Date.now();
+  timer.every(1000, () => {
+    const now = Date.now();
+    if (S.active && now - lastBeat > 90000) {
+      sleepWarn(`Tab LMS vừa bị ngưng khoảng ${Math.round((now - lastBeat) / 60000)} phút (trình duyệt cho tab ngủ hoặc máy ngủ).`);
+    }
+    lastBeat = now;
+    if (S.active) render();
+  });
 })();

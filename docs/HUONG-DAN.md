@@ -127,7 +127,9 @@ AI có thể sai, nhất là câu hỏi kiểu "đáp án nào SAI". Gợi ý đ
 
 ## Cập nhật bản mới
 
-1. Tải ZIP mới như **Bước 1**, giải nén **đè lên** thư mục cũ.
+Khi có bản mới, biểu tượng extension hiện chữ **NEW**, nút "Treo học" có dấu **⬆**, và trong bảng có dòng xanh **"Có bản mới vX.Y"** kèm nút **Tải bản mới** (extension tự kiểm tra GitHub, tối đa 6 tiếng một lần).
+
+1. Bấm **Tải bản mới** (hoặc tải ZIP như **Bước 1**), giải nén **đè lên** thư mục cũ.
 2. Vào `brave://extensions` (hoặc `chrome://extensions`), bấm **⟳** ở thẻ "VNU LMS - Treo học".
 
 Cài đặt và khoá AI đã lưu vẫn được giữ.
@@ -142,3 +144,4 @@ Cài đặt và khoá AI đã lưu vẫn được giữ.
 | "Khoá Gemini không hợp lệ" | Copy lại khoá ở Bước 7, dán lại ở Bước 8 |
 | "hết lượt miễn phí" / "không có model" | Chờ vài phút, hoặc đổi model ở Bước 8 |
 | Trình duyệt hỏi tắt "extension ở chế độ nhà phát triển" | Bấm giữ lại / Cancel; đây là cảnh báo bình thường với extension cài từ thư mục |
+| Bảng hiện cảnh báo đỏ **💤 "Tab LMS vừa bị ngưng…"** / **"đã cho tab LMS ngủ"** | Trình duyệt đã cho tab ngủ nên lúc đó không được tính giờ. Bấm **"Cách sửa"** trong cảnh báo và làm theo (thêm `lms.vnu.edu.vn` vào danh sách luôn hoạt động của Memory Saver / Sleeping tabs, tắt Energy Saver). Máy tính ngủ cũng gây cảnh báo này: chỉnh Sleep thành Never. |
