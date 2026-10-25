@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VNU LMS - Treo học
 // @namespace    vnu-lms-keepalive
-// @version      2.7
+// @version      2.8
 // @description  Tự học lần lượt các mục trên LMS VNU cho đến khi đạt yêu cầu, giữ video chạy khi treo máy.
 // @match        https://lms.vnu.edu.vn/*
 // @run-at       document-start
@@ -491,11 +491,13 @@
     const bank = readJSON(LS_AI, {});
     const todo = qs.filter(q => !bank[q.key]);
     Q.busy = true;
-    quizStatus(todo.length ? `Đang hỏi Claude ${todo.length} câu…` : 'Dùng gợi ý đã lưu…');
+    quizStatus(todo.length ? `Đang hỏi AI ${todo.length} câu (model bận thì tự thử lại / đổi model)…` : 'Dùng gợi ý đã lưu…');
+    let usedModel = '';
     try {
       if (todo.length) {
         const res = await askAI(todo.map(q => ({ n: q.n, question: q.title, answers: q.answers, multi: q.multi })));
         if (!res.ok) throw new Error(res.error);
+        usedModel = res.model ? ` (dùng ${res.model})` : '';
         for (const a of res.answers) {
           const q = todo.find(x => x.n === String(a.n));
           if (!q) continue;
@@ -506,7 +508,7 @@
       let shown = 0;
       for (const q of qs) if (bank[q.key]) { annotate(q, bank[q.key]); shown++; }
       Q.busy = false;
-      quizStatus(`Đã gợi ý ${shown}/${qs.length} câu. Xem lại, rồi bấm "Điền gợi ý" hoặc tự chọn.`);
+      quizStatus(`Đã gợi ý ${shown}/${qs.length} câu${usedModel}. Xem lại, rồi bấm "Điền gợi ý" hoặc tự chọn.`);
     } catch (e) {
       Q.busy = false;
       quizStatus('Lỗi: ' + e.message);

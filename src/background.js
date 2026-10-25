@@ -65,18 +65,25 @@ const GEMINI_SCHEMA = {
   required: ['answers'],
 };
 
-class GeminiError extends Error {}
+// Model dự phòng khi model đang chọn quá tải (503), hết lượt miễn phí (429) hoặc không còn (404)
+const GEMINI_FALLBACKS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash'];
 
-async function suggestGemini(questions) {
-  const { geminiKey, geminiModel } = await chrome.storage.local.get(['geminiKey', 'geminiModel']);
-  if (!geminiKey) throw new GeminiError('Chưa có khoá Gemini. Bấm "⚙ Khoá API" để nhập.');
-  const model = (geminiModel || DEFAULT_GEMINI_MODEL).trim();
+class GeminiError extends Error {
+  constructor(message, { status = 0, retry = false, nextModel = false } = {}) {
+    super(message);
+    Object.assign(this, { status, retry, nextModel });
+  }
+}
+
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+async function callGemini(model, key, questions) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   let res;
   try {
     res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM }] },
         contents: [{ role: 'user', parts: [{ text: JSON.stringify({ questions }) }] }],
@@ -84,21 +91,44 @@ async function suggestGemini(questions) {
       }),
     });
   } catch (e) {
-    throw new GeminiError('Không kết nối được tới Gemini.');
+    throw new GeminiError('Không kết nối được tới Gemini.', { retry: true });
   }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = (body.error && body.error.message) || res.statusText;
-    if (res.status === 429) throw new GeminiError('Gemini: hết lượt miễn phí tạm thời, thử lại sau ít phút.');
-    if (res.status === 400 && /api key/i.test(msg)) throw new GeminiError('Khoá Gemini không hợp lệ.');
-    if (res.status === 404) throw new GeminiError(`Gemini không có model "${model}". Kiểm tra tên model trong cài đặt.`);
-    throw new GeminiError(`Lỗi từ Gemini (${res.status}): ${msg}`);
+    if (res.status === 400 && /api key/i.test(msg)) throw new GeminiError('Khoá Gemini không hợp lệ.', { status: 400 });
+    if (res.status === 503 || res.status === 500) throw new GeminiError(`Gemini "${model}" đang quá tải.`, { status: res.status, retry: true, nextModel: true });
+    if (res.status === 429) throw new GeminiError(`Gemini "${model}" hết lượt miễn phí tạm thời.`, { status: 429, nextModel: true });
+    if (res.status === 404) throw new GeminiError(`Gemini không có model "${model}".`, { status: 404, nextModel: true });
+    throw new GeminiError(`Lỗi từ Gemini (${res.status}): ${msg}`, { status: res.status });
   }
   if (body.promptFeedback && body.promptFeedback.blockReason) throw new GeminiError('Gemini chặn câu hỏi này.');
   const parts = (body.candidates && body.candidates[0] && body.candidates[0].content && body.candidates[0].content.parts) || [];
   const text = parts.map(p => p.text || '').join('');
-  if (!text) throw new GeminiError('Gemini không trả về kết quả.');
+  if (!text) throw new GeminiError('Gemini không trả về kết quả.', { retry: true });
   return JSON.parse(text).answers;
+}
+
+// Thử model đang chọn trước (quá tải thì thử lại sau 3 giây), không được thì lần lượt chuyển sang model dự phòng.
+async function suggestGemini(questions) {
+  const { geminiKey, geminiModel } = await chrome.storage.local.get(['geminiKey', 'geminiModel']);
+  if (!geminiKey) throw new GeminiError('Chưa có khoá Gemini. Bấm "⚙ Khoá API" để nhập.');
+  const chosen = (geminiModel || DEFAULT_GEMINI_MODEL).trim();
+  const models = [chosen, ...GEMINI_FALLBACKS.filter(m => m !== chosen)];
+  const tried = [];
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return { answers: await callGemini(model, geminiKey, questions), model };
+      } catch (e) {
+        if (!(e instanceof GeminiError) || (!e.retry && !e.nextModel)) throw e;
+        if (attempt === 0 && e.retry) { await wait(3000); continue; }
+        tried.push(e.message);
+        break;
+      }
+    }
+  }
+  throw new GeminiError('Tất cả model Gemini đều đang bận hoặc hết lượt, thử lại sau ít phút. (' + tried.join(' ') + ')');
 }
 
 // ---------- Claude ----------
@@ -121,7 +151,7 @@ async function suggestClaude(questions) {
   if (response.stop_reason === 'max_tokens') throw new Error('Câu trả lời bị cắt ngắn, hãy thử lại với ít câu hơn.');
   const text = response.content.find(b => b.type === 'text');
   if (!text) throw new Error('Claude không trả về kết quả.');
-  return JSON.parse(text.text).answers;
+  return { answers: JSON.parse(text.text).answers, model: response.model };
 }
 
 function describeError(e) {
@@ -181,7 +211,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg && msg.type === 'ai-suggest') {
     suggest(msg.questions)
-      .then(answers => sendResponse({ ok: true, answers }))
+      .then(({ answers, model }) => sendResponse({ ok: true, answers, model }))
       .catch(e => sendResponse({ ok: false, error: describeError(e) }));
     return true; // trả lời bất đồng bộ
   }
