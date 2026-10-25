@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VNU LMS - Treo học
 // @namespace    vnu-lms-keepalive
-// @version      2.3.1
+// @version      2.5
 // @description  Tự học lần lượt các mục trên LMS VNU cho đến khi đạt yêu cầu, giữ video chạy khi treo máy.
 // @match        https://lms.vnu.edu.vn/*
 // @run-at       document-start
@@ -49,7 +49,27 @@
   const cfg = Object.assign({}, DEFAULTS, stored, { kinds: Object.assign({}, DEFAULTS.kinds, stored.kinds) });
   const saveCfg = () => writeJSON(LS_CFG, cfg);
 
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  // Đếm giờ trong Web Worker: khi tab nằm nền, trình duyệt làm chậm setTimeout/setInterval của trang
+  // (tới 1 lần/phút) nhưng không làm chậm timer của worker. Không tạo được worker thì dùng timer thường.
+  const timer = (() => {
+    let worker = null, seq = 0;
+    const callbacks = {};
+    try {
+      const src = 'const t={};onmessage=e=>{const d=e.data;t[d.id]=(d.repeat?setInterval:setTimeout)(()=>postMessage(d.id),d.ms)}';
+      worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      worker.onmessage = e => { const fn = callbacks[e.data]; if (fn) fn(); };
+    } catch (e) {}
+    const start = (ms, fn, repeat) => {
+      const id = ++seq;
+      callbacks[id] = repeat ? fn : () => { delete callbacks[id]; fn(); };
+      worker.postMessage({ id, ms, repeat });
+    };
+    return {
+      after: (ms, fn) => (worker ? start(ms, fn, false) : setTimeout(fn, ms)),
+      every: (ms, fn) => (worker ? start(ms, fn, true) : setInterval(fn, ms)),
+    };
+  })();
+  const sleep = ms => new Promise(r => timer.after(ms, r));
   const norm = s => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const classIdFromUrl = () => (location.pathname.match(/\/learn\/lop-hoc\/chi-tiet\/([0-9a-f-]{36})/i) || [])[1];
@@ -672,7 +692,7 @@
 
   const start = () => { buildUI(); resumeIfNeeded(); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
-  setInterval(() => { buildUI(); tickVideo(); answerLmsAlert(); if (ui && !ui.panel.hidden && !S.active) render(); }, 3000);
-  setInterval(() => cfg.keepAlive && pokeActivity(), 20000);
-  setInterval(() => S.active && render(), 1000);
+  timer.every(3000, () => { buildUI(); tickVideo(); answerLmsAlert(); if (ui && !ui.panel.hidden && !S.active) render(); });
+  timer.every(20000, () => cfg.keepAlive && pokeActivity());
+  timer.every(1000, () => S.active && render());
 })();

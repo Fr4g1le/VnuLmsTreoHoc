@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "VNU LMS - Treo học",
-  "version": "2.4",
+  "version": "2.5",
   "description": "Tự học lần lượt các mục trên LMS VNU cho đến khi đạt yêu cầu, giữ video chạy khi treo máy, gợi ý đáp án trắc nghiệm bằng AI (Gemini miễn phí hoặc Claude).",
   "action": {
     "default_title": "Mở/đóng bảng Treo học"
