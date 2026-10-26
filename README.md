@@ -22,7 +22,7 @@ Extension cho Chrome / Brave / Edge giúp treo máy học trên [LMS VNU](https:
 - **Bảng điều khiển:** chọn loại mục (video, PDF, bài đọc…), chọn bài học muốn chạy, xem danh sách, thời gian còn lại và nhật ký. Giao diện chọn được trong **Cài đặt**: Xanh đậm (theo sáng/tối của máy), Trắng hoặc Tối. Muốn đặt bảng ở góc khác thì kéo nút **Treo học** (hoặc đầu bảng) sang góc đó; bảng tự dính vào góc gần nhất và nhớ vị trí.
 - Chế độ tự học không bao giờ mở bài kiểm tra / trắc nghiệm.
 - **Trợ lý làm bài (AI):** khi bạn tự mở một bài làm, bấm **🤖 Gợi ý đáp án** để AI đọc câu hỏi và hiện đáp án gợi ý kèm giải thích ngắn dưới mỗi câu; **✍ Điền gợi ý** điền sẵn các đáp án đó; **không bao giờ tự nộp bài**. Gợi ý được lưu lại, lần sau gặp câu giống hệt sẽ dùng luôn mà không gọi AI. Hỗ trợ:
-  - **Trắc nghiệm**, kể cả **đọc hiểu** (đoạn văn nằm trong đề).
+  - **Trắc nghiệm**: chọn một / chọn nhiều / **chọn từ danh sách thả xuống**, kể cả **đọc hiểu** (đoạn văn trong đề), câu nghe theo audio của đề chung, và câu mà đề là **hình ảnh** (ảnh được gửi kèm cho AI).
   - **Điền ô chữ**: điền chỗ trống, viết lại câu. Bài **nghe** có file audio thì AI nghe audio rồi gợi ý từng ô (viết IN HOA nếu đề yêu cầu). Bạn tự bấm **Lưu câu trả lời** ở từng câu. Bài nghe cần khoá Gemini vì Claude không nghe được audio.
   - **Nối cặp kéo thả**: nối câu hỏi với câu trả lời, sắp xếp từ thành câu. Điền gợi ý sẽ tự kéo từng mục vào đúng ô.
 - **Sang bài tập tiếp theo:** nút **⏭ Bài tập tiếp theo chưa đạt** mở bài kiểm tra kế tiếp (theo thứ tự mục lục) mà bạn chưa đạt. Bật sẵn tuỳ chọn tự chuyển: vừa nộp bài mà kết quả mới là **Đạt** thì tự mở bài tiếp theo; chưa đạt thì ở lại để làm lại. Extension không tự bấm **LÀM BÀI**.

@@ -554,19 +554,70 @@
   const Q = { busy: false, status: '' };
   const clean = s => (s || '').replace(/\s+/g, ' ').trim();
 
+  // Trắc nghiệm: nút chọn (radio/checkbox) hoặc danh sách thả xuống (p-dropdown, lựa chọn nằm trong select ẩn).
+  // Câu con (1.1, 1.2…) nằm dưới khung đề chung thì kèm đề chung và audio của khung đó; ảnh trong đề câu cũng gửi cho AI.
   function readQuiz() {
     const out = [];
+    let ctx = null;
     for (const item of document.querySelectorAll('.question-item')) {
-      const inputs = [...item.querySelectorAll('.question-content input[type=radio], .question-content input[type=checkbox]')];
-      if (!inputs.length || !item.offsetParent) continue;
-      const title = clean(item.querySelector('.question-title') && item.querySelector('.question-title').innerText);
-      const answers = inputs.map(i => clean(i.closest('label') && i.closest('label').innerText));
+      const hc = item.querySelector('app-client-question-hc');
+      if (hc) {
+        const t = hc.querySelector('.question-title');
+        ctx = { text: t ? t.innerText.trim() : '', audio: hc.querySelector('audio') };
+        continue;
+      }
+      const select = item.querySelector('.question-content p-dropdown select');
+      const inputs = select ? [] : [...item.querySelectorAll('.question-content input[type=radio], .question-content input[type=checkbox]')];
+      if ((!select && !inputs.length) || !item.offsetParent) continue;
+      const titleEl = item.querySelector('.question-title');
+      const title = clean(titleEl && titleEl.innerText);
+      const answers = select ? [...select.options].slice(1).map(o => clean(o.text))
+        : inputs.map(i => clean(i.closest('label') && i.closest('label').innerText));
+      const images = titleEl ? [...titleEl.querySelectorAll('img')].map(im => im.currentSrc || im.src).filter(Boolean) : [];
       const num = item.querySelector('.question-num');
-      const n = ((num && num.textContent.match(/\d+/)) || [String(out.length + 1)])[0];
-      out.push({ item, inputs, n, title, answers, multi: inputs.some(i => i.type === 'checkbox'),
-        key: norm(title) + '||' + answers.map(norm).sort().join('|') });
+      const n = ((num && num.innerText.match(/\d+\s*\.\s*\d+|\d+/)) || [String(out.length + 1)])[0].replace(/\s+/g, '');
+      const qctx = n.includes('.') ? ctx : null;
+      out.push({ item, inputs, select, n, title, answers, images, ctx: qctx, multi: inputs.some(i => i.type === 'checkbox'),
+        key: norm((qctx ? qctx.text.slice(0, 300) + '||' : '') + title) + '||' + images.join('|') + '||' + answers.map(norm).sort().join('|') });
     }
     return out;
+  }
+
+  // Ảnh trong đề (tối đa 8 ảnh, mỗi ảnh dưới 4 MB). Ảnh không tải được thì bỏ qua.
+  async function imagesPayload(qs) {
+    const out = [];
+    for (const q of qs) {
+      q.imageIds = [];
+      for (const src of q.images) {
+        if (out.length >= 8) break;
+        try {
+          const blob = await (await fetch(src, { credentials: 'include' })).blob();
+          if (!blob.type.startsWith('image/') || blob.size > 4 * 1024 * 1024) continue;
+          const data = await new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result).split(',')[1]);
+            r.onerror = reject;
+            r.readAsDataURL(blob);
+          });
+          const id = 'img' + (out.length + 1);
+          out.push({ id, mime: blob.type, data });
+          q.imageIds.push(id);
+        } catch (e) {}
+      }
+    }
+    return out;
+  }
+
+  // Chọn một mục của danh sách thả xuống PrimeNG như khi bấm chuột: mở danh sách rồi bấm mục (danh sách gắn vào cuối trang)
+  async function pickDropdown(item, text) {
+    const dd = item.querySelector('.question-content .ui-dropdown');
+    if (!dd) return false;
+    dd.click();
+    await sleep(300);
+    const li = [...document.querySelectorAll('.ui-dropdown-items li')].filter(l => l.offsetParent).find(l => clean(l.innerText) === text);
+    if (li) { li.click(); await sleep(150); return true; }
+    dd.click();
+    return false;
   }
 
   // Bài điền chỗ trống (thường là bài nghe): một khung đề (có thể kèm audio) rồi tới các câu 1.1, 1.2... mỗi câu một ô chữ.
@@ -636,16 +687,9 @@
       label.style.outline = hit ? '2px solid #5b46b0' : '';
       label.style.borderRadius = hit ? '4px' : '';
     });
-    let note = q.item.querySelector('.vnu-ai-note');
-    if (!note) {
-      note = document.createElement('div');
-      note.className = 'vnu-ai-note';
-      note.style.cssText = 'clear:both;margin:8px 16px 0;padding:6px 10px;border-left:3px solid #5b46b0;border-radius:0 6px 6px 0;' +
-        'background:#eeebfa;color:#1a2233;font-size:13px;';
-      q.item.querySelector('.question-content').after(note);
-    }
-    const letters = s.picks.map(p => String.fromCharCode(65 + q.answers.indexOf(p))).join(', ');
-    note.textContent = `🤖 Gợi ý: ${letters || '?'} (độ tin cậy ${s.confidence}) — ${s.why}`;
+    // Danh sách thả xuống: ghi luôn chữ của đáp án; nút chọn: ghi chữ cái A, B, C…
+    const pick = q.select ? s.picks.join(', ') : s.picks.map(p => String.fromCharCode(65 + q.answers.indexOf(p))).join(', ');
+    aiNote(q.item, q.item.querySelector('.question-content'), `🤖 Gợi ý: ${pick || '?'} (độ tin cậy ${s.confidence}) — ${s.why}`);
   }
 
   // Kéo thả nối cặp: bên trái là các mục để kéo, bên phải là các ô đích (thẻ có tiêu đề).
@@ -712,17 +756,33 @@
   async function suggestChoice(qs, bank) {
     const todo = qs.filter(q => !bank[q.key]);
     let used = '';
-    if (todo.length) {
-      quizStatus(`Đang hỏi AI ${todo.length} câu trắc nghiệm (model bận thì tự thử lại / đổi model)…`);
-      const res = await askAI(todo.map(q => ({ n: q.n, question: q.title, answers: q.answers, multi: q.multi })));
+    const save = (part, res) => {
       if (!res.ok) throw new Error(res.error);
       used = modelNote(res);
       for (const a of res.answers) {
-        const q = todo.find(x => x.n === String(a.n));
+        const q = part.find(x => x.n === String(a.n));
         if (!q) continue;
         bank[q.key] = { picks: a.choices.filter(i => q.answers[i] != null).map(i => q.answers[i]), why: a.why, confidence: a.confidence };
       }
       writeJSON(LS_AI, bank);
+    };
+    // Câu chỉ có chữ: gửi như trước. Câu có đề chung, audio hoặc ảnh: gửi theo từng đề chung, kèm audio và ảnh.
+    const plain = todo.filter(q => !q.ctx && !q.images.length);
+    if (plain.length) {
+      quizStatus(`Đang hỏi AI ${plain.length} câu trắc nghiệm (model bận thì tự thử lại / đổi model)…`);
+      save(plain, await askAI(plain.map(q => ({ n: q.n, question: q.title, answers: q.answers, multi: q.multi }))));
+    }
+    const rich = todo.filter(q => q.ctx || q.images.length);
+    for (const ctx of [...new Set(rich.map(q => q.ctx))]) {
+      const part = rich.filter(q => q.ctx === ctx);
+      quizStatus(ctx && ctx.audio ? 'Đang tải file audio của bài…' : `Đang chuẩn bị ${part.length} câu…`);
+      const audio = ctx && ctx.audio ? await audioPayload(ctx.audio) : null;
+      const images = await imagesPayload(part);
+      quizStatus(`Đang hỏi AI ${part.length} câu${audio ? ' (AI nghe audio, có thể mất 30-60 giây)' : ''}${images.length ? `, kèm ${images.length} ảnh` : ''}…`);
+      save(part, await askAI(null, {
+        kind: 'choose', context: ctx ? ctx.text : '', audio, images,
+        questions: part.map(q => ({ n: q.n, question: q.title, answers: q.answers, multi: q.multi, images: q.imageIds })),
+      }));
     }
     let shown = 0;
     for (const q of qs) if (bank[q.key]) { annotate(q, bank[q.key]); shown++; }
@@ -832,6 +892,11 @@
     for (const q of readQuiz()) {
       const s = bank[q.key];
       if (!s) continue;
+      if (q.select) {
+        if (s.picks[0] && clean(q.select.options[q.select.selectedIndex].text) !== s.picks[0]) await pickDropdown(q.item, s.picks[0]);
+        n++;
+        continue;
+      }
       q.inputs.forEach((inp, i) => {
         const want = s.picks.includes(q.answers[i]);
         // click() để trang ghi nhận đáp án như khi bạn tự bấm

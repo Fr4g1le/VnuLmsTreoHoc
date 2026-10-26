@@ -209,6 +209,13 @@ const answersOf = props => ({
 });
 
 const TASKS = {
+  // Trắc nghiệm có đề chung (đoạn văn, audio) hoặc có ảnh trong đề: chọn đáp án như trắc nghiệm thường
+  choose: {
+    system: SYSTEM + `
+- "context" là đề chung của các câu (có thể trống). Nếu có file audio thì đó là bài nghe của đề chung: nghe hết rồi trả lời theo nội dung nghe được.
+- Câu có "images" (ví dụ ["img1"]) thì xem các ảnh có nhãn tương ứng được gửi kèm; đề có thể chỉ là ảnh.`,
+    schema: SCHEMA,
+  },
   // Bài điền chỗ trống, thường là bài nghe: đề có (1) ____, mỗi ô có n ("1.1") và label ("1-" hoặc câu cần viết lại)
   fill: {
     system: `Bạn giúp sinh viên ôn tập dạng bài điền vào ô trống trên LMS, thường là bài tiếng Anh.
@@ -262,7 +269,7 @@ const TASKS = {
 };
 
 // Claude không nghe được audio, nên việc có audio luôn dùng Gemini (nếu đã nhập khoá Gemini).
-async function runTask({ kind, audio, ...data }, progress) {
+async function runTask({ kind, audio, images = [], ...data }, progress) {
   const task = TASKS[kind];
   if (!task) throw new Error('Không rõ loại yêu cầu: ' + kind);
   const { provider, geminiKey } = await chrome.storage.local.get(['provider', 'geminiKey']);
@@ -273,9 +280,14 @@ async function runTask({ kind, audio, ...data }, progress) {
     }
     const parts = [{ text }];
     if (audio) parts.push({ inlineData: { mimeType: audio.mime, data: audio.data } });
+    for (const im of images) parts.push({ text: `Ảnh ${im.id}:` }, { inlineData: { mimeType: im.mime, data: im.data } });
     return askGemini({ system: task.system, parts, schema: geminiSchema(task.schema) }, progress);
   }
-  return askClaude(task.system, task.schema, text, progress);
+  const content = images.length ? [{ type: 'text', text }, ...images.flatMap(im => [
+    { type: 'text', text: `Ảnh ${im.id}:` },
+    { type: 'image', source: { type: 'base64', media_type: im.mime, data: im.data } },
+  ])] : text;
+  return askClaude(task.system, task.schema, content, progress);
 }
 
 function describeError(e) {
