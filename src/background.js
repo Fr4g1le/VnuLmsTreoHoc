@@ -77,7 +77,8 @@ class GeminiError extends Error {
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
-async function callGemini(model, key, questions) {
+// req = { system, parts, schema }: parts là nội dung gửi lên (chữ, có thể kèm audio).
+async function callGemini(model, key, req) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   let res;
   try {
@@ -85,9 +86,9 @@ async function callGemini(model, key, questions) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM }] },
-        contents: [{ role: 'user', parts: [{ text: JSON.stringify({ questions }) }] }],
-        generationConfig: { responseMimeType: 'application/json', responseSchema: GEMINI_SCHEMA },
+        systemInstruction: { parts: [{ text: req.system }] },
+        contents: [{ role: 'user', parts: req.parts }],
+        generationConfig: { responseMimeType: 'application/json', responseSchema: req.schema },
       }),
     });
   } catch (e) {
@@ -109,8 +110,11 @@ async function callGemini(model, key, questions) {
   return JSON.parse(text).answers;
 }
 
+const suggestGemini = questions =>
+  askGemini({ system: SYSTEM, parts: [{ text: JSON.stringify({ questions }) }], schema: GEMINI_SCHEMA });
+
 // Thử model đang chọn trước (quá tải thì thử lại sau 3 giây), không được thì lần lượt chuyển sang model dự phòng.
-async function suggestGemini(questions) {
+async function askGemini(req) {
   const { geminiKey, geminiModel } = await chrome.storage.local.get(['geminiKey', 'geminiModel']);
   if (!geminiKey) throw new GeminiError('Chưa có khoá Gemini. Bấm "⚙ Khoá API" để nhập.');
   const chosen = (geminiModel || DEFAULT_GEMINI_MODEL).trim();
@@ -119,7 +123,7 @@ async function suggestGemini(questions) {
   for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        return { answers: await callGemini(model, geminiKey, questions), model };
+        return { answers: await callGemini(model, geminiKey, req), model };
       } catch (e) {
         if (!(e instanceof GeminiError) || (!e.retry && !e.nextModel)) throw e;
         if (attempt === 0 && e.retry) { await wait(3000); continue; }
@@ -132,7 +136,9 @@ async function suggestGemini(questions) {
 }
 
 // ---------- Claude ----------
-async function suggestClaude(questions) {
+const suggestClaude = questions => askClaude(SYSTEM, SCHEMA, JSON.stringify({ questions }));
+
+async function askClaude(system, schema, content) {
   const { apiKey, model } = await chrome.storage.local.get(['apiKey', 'model']);
   if (!apiKey) throw new Error('Chưa có khoá API. Bấm "Cài khoá API" để nhập.');
 
@@ -142,9 +148,9 @@ async function suggestClaude(questions) {
     max_tokens: 16000,
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
-    output_config: { effort: 'medium', format: { type: 'json_schema', schema: SCHEMA } },
-    system: SYSTEM,
-    messages: [{ role: 'user', content: JSON.stringify({ questions }) }],
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema } },
+    system,
+    messages: [{ role: 'user', content }],
   });
 
   if (response.stop_reason === 'refusal') throw new Error('Claude từ chối trả lời các câu hỏi này.');
@@ -152,6 +158,72 @@ async function suggestClaude(questions) {
   const text = response.content.find(b => b.type === 'text');
   if (!text) throw new Error('Claude không trả về kết quả.');
   return { answers: JSON.parse(text.text).answers, model: response.model };
+}
+
+// ---------- Bài điền chỗ trống / bài nghe ----------
+const FILL_SYSTEM = `Bạn giúp sinh viên ôn tập dạng bài điền vào chỗ trống trên LMS, thường là bài nghe tiếng Anh.
+- "context" là đề bài, trong đó các chỗ trống được đánh số như (1) ____, (2) ____.
+- Mỗi ô trong "blanks" có "n" (ví dụ "1.1") và "label" (ví dụ "1-"); số trong label ứng với chỗ trống cùng số trong đề.
+- Nếu có file audio: nghe hết, điền đúng từ hoặc cụm từ nghe được, khớp ngữ pháp với câu trong đề và giới hạn số từ nếu đề có nêu.
+- "text": chỉ ghi đáp án cần điền, không ghi số thứ tự. Nếu "caps" là true thì viết IN HOA.
+- "why": giải thích ngắn bằng tiếng Việt (1 câu), trích ý nghe được trong audio nếu có.
+- "confidence": "cao", "trung bình" hoặc "thấp".`;
+
+const FILL_SCHEMA = {
+  type: 'object',
+  properties: {
+    answers: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          n: { type: 'string' },
+          text: { type: 'string' },
+          why: { type: 'string' },
+          confidence: { type: 'string', enum: ['cao', 'trung bình', 'thấp'] },
+        },
+        required: ['n', 'text', 'why', 'confidence'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['answers'],
+  additionalProperties: false,
+};
+
+const GEMINI_FILL_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    answers: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          n: { type: 'STRING' },
+          text: { type: 'STRING' },
+          why: { type: 'STRING' },
+          confidence: { type: 'STRING', enum: ['cao', 'trung bình', 'thấp'] },
+        },
+        required: ['n', 'text', 'why', 'confidence'],
+      },
+    },
+  },
+  required: ['answers'],
+};
+
+// Claude không nghe được audio, nên bài có audio luôn dùng Gemini (nếu đã nhập khoá Gemini).
+async function fillBlanks({ context, caps, audio, blanks }) {
+  const { provider, geminiKey } = await chrome.storage.local.get(['provider', 'geminiKey']);
+  const text = JSON.stringify({ context, caps, blanks });
+  if (audio || provider === 'gemini') {
+    if (audio && !geminiKey) {
+      throw new GeminiError('Bài nghe cần khoá Gemini (Claude không nghe được audio). Bấm "⚙ Khoá API", chọn Google Gemini và nhập khoá miễn phí.');
+    }
+    const parts = [{ text }];
+    if (audio) parts.push({ inlineData: { mimeType: audio.mime, data: audio.data } });
+    return askGemini({ system: FILL_SYSTEM, parts, schema: GEMINI_FILL_SCHEMA });
+  }
+  return askClaude(FILL_SYSTEM, FILL_SCHEMA, text);
 }
 
 function describeError(e) {
@@ -231,6 +303,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .then(({ answers, model }) => sendResponse({ ok: true, answers, model }))
       .catch(e => sendResponse({ ok: false, error: describeError(e) }));
     return true; // trả lời bất đồng bộ
+  }
+  if (msg && msg.type === 'ai-fill') {
+    fillBlanks(msg.task)
+      .then(({ answers, model }) => sendResponse({ ok: true, answers, model }))
+      .catch(e => sendResponse({ ok: false, error: describeError(e) }));
+    return true;
   }
   if (msg && msg.type === 'open-options') chrome.runtime.openOptionsPage();
 });

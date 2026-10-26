@@ -22,6 +22,7 @@ Extension cho Chrome / Brave / Edge giúp treo máy học trên [LMS VNU](https:
 - **Bảng điều khiển:** chọn loại mục (video, PDF, bài đọc…), chọn bài học muốn chạy, xem danh sách, thời gian còn lại và nhật ký.
 - Chế độ tự học không bao giờ mở bài kiểm tra / trắc nghiệm.
 - **Trợ lý trắc nghiệm (AI):** khi bạn tự mở một bài trắc nghiệm, bấm **🤖 Gợi ý đáp án** để Claude đọc câu hỏi, đánh dấu đáp án gợi ý kèm giải thích ngắn. **✍ Điền gợi ý** chọn sẵn các đáp án đó; **không bao giờ tự nộp bài**. Gợi ý được lưu lại, lần sau gặp câu giống hệt sẽ dùng luôn mà không gọi AI.
+- **Bài nghe / điền chỗ trống:** với bài có file audio và các ô cần điền (1.1, 1.2…), cùng nút **🤖 Gợi ý đáp án** sẽ gửi audio kèm đề cho Gemini nghe rồi gợi ý từng ô (viết IN HOA nếu đề yêu cầu); **✍ Điền gợi ý** điền vào các ô. Bạn tự bấm **Lưu câu trả lời** ở từng câu. Cần khoá Gemini vì Claude không nghe được audio.
 
 ## Cách hoạt động
 
@@ -70,6 +71,8 @@ Lưu ý:
 2. Mở bảng **Treo học** → **⚙ Khoá API** (hoặc chuột phải biểu tượng extension → **Options**), chọn nhà cung cấp, dán khoá, bấm **Lưu**. Khoá chỉ lưu trong trình duyệt, trang LMS không đọc được.
 3. Mở bài trắc nghiệm, bấm **LÀM BÀI**, rồi bấm **🤖 Gợi ý đáp án** trong bảng.
 4. Xem gợi ý (khung xanh + giải thích dưới mỗi câu), bấm **✍ Điền gợi ý** hoặc tự chọn, kiểm tra lại rồi **tự bấm Nộp bài**.
+
+Bài nghe điền chỗ trống làm giống hệt: bấm **🤖 Gợi ý đáp án** (AI nghe audio mất khoảng 30-60 giây), **✍ Điền gợi ý**, rồi bấm **Lưu câu trả lời** ở từng câu trước khi nộp.
 
 AI có thể sai, nhất là với câu hỏi lừa ("đáp án nào SAI") hoặc kiến thức riêng của giáo trình, nên hãy đọc lại trước khi nộp. Tính năng AI chỉ có ở bản extension, không có ở bản Tampermonkey.
 

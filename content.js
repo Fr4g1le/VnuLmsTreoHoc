@@ -457,12 +457,50 @@
     return out;
   }
 
+  // Bài điền chỗ trống (thường là bài nghe): một khung đề (có thể kèm audio) rồi tới các câu 1.1, 1.2... mỗi câu một ô chữ.
+  // Câu ô chữ thuộc khung đề gần nhất phía trên nó.
+  function readFill() {
+    const groups = [];
+    let ctx = null;
+    for (const item of document.querySelectorAll('.question-item')) {
+      const input = item.querySelector('.question-title input[type=text], .question-title textarea');
+      const title = item.querySelector('.question-title');
+      if (!input) {
+        if (title && clean(title.innerText)) ctx = { item, text: title.innerText.trim(), audio: item.querySelector('audio'), blanks: [] };
+        continue;
+      }
+      if (!item.offsetParent) continue;
+      if (!ctx) ctx = { item: null, text: '', audio: null, blanks: [] };
+      if (!groups.includes(ctx)) groups.push(ctx);
+      const num = item.querySelector('.question-num');
+      const n = ((num && num.innerText.match(/\d+\s*\.\s*\d+/)) || [String(ctx.blanks.length + 1)])[0].replace(/\s+/g, '');
+      ctx.blanks.push({ item, input, n, label: clean(title.innerText), key: norm(ctx.text) + '||' + n });
+    }
+    return groups;
+  }
+  const countBlanks = groups => groups.reduce((s, g) => s + g.blanks.length, 0);
+  const wantsCaps = text => /IN HOA|CAPITAL/i.test(text);
+
+  async function audioPayload(audio) {
+    const src = audio && (audio.currentSrc || audio.src || (audio.querySelector('source') || {}).src);
+    if (!src) return null;
+    const blob = await (await fetch(src, { credentials: 'include' })).blob();
+    if (blob.size > 18 * 1024 * 1024) throw new Error('File audio quá lớn (trên 18 MB), không gửi cho AI được.');
+    const data = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(',')[1]);
+      r.onerror = () => reject(new Error('Không đọc được file audio.'));
+      r.readAsDataURL(blob);
+    });
+    return { mime: blob.type && blob.type.startsWith('audio/') ? blob.type : 'audio/mpeg', data };
+  }
+
   let aiSeq = 0;
   const aiWait = {};
-  const askAI = questions => new Promise(resolve => {
+  const askAI = (questions, task) => new Promise(resolve => {
     const id = ++aiSeq;
     aiWait[id] = resolve;
-    window.postMessage({ vnuTreo: 'ai-suggest', id, questions }, location.origin);
+    window.postMessage(task ? { vnuTreo: 'ai-fill', id, task } : { vnuTreo: 'ai-suggest', id, questions }, location.origin);
     setTimeout(() => {
       if (!aiWait[id]) return;
       delete aiWait[id];
@@ -491,8 +529,57 @@
     note.textContent = `🤖 Gợi ý: ${letters || '?'} (độ tin cậy ${s.confidence}) — ${s.why}`;
   }
 
+  function annotateBlank(b, s) {
+    let note = b.item.querySelector('.vnu-ai-note');
+    if (!note) {
+      note = document.createElement('div');
+      note.className = 'vnu-ai-note';
+      note.style.cssText = 'margin:8px 0 0;padding:6px 10px;border-left:3px solid #5b46b0;border-radius:0 6px 6px 0;' +
+        'background:#eeebfa;color:#1a2233;font-size:13px;';
+      b.input.closest('p, div').after(note);
+    }
+    note.textContent = `🤖 Gợi ý: ${s.text || '?'} (độ tin cậy ${s.confidence}) — ${s.why}`;
+  }
+
+  async function suggestFill(groups) {
+    const bank = readJSON(LS_AI, {});
+    const total = countBlanks(groups);
+    Q.busy = true;
+    let usedModel = '';
+    try {
+      for (const g of groups) {
+        const todo = g.blanks.filter(b => !bank[b.key]);
+        if (!todo.length) continue;
+        quizStatus(g.audio ? 'Đang tải file audio của bài nghe…' : `Đang hỏi AI ${todo.length} ô…`);
+        const audio = await audioPayload(g.audio);
+        if (audio) quizStatus(`AI đang nghe audio và điền ${todo.length} ô (có thể mất 30-60 giây)…`);
+        const res = await askAI(null, {
+          context: g.text, caps: wantsCaps(g.text), audio,
+          blanks: todo.map(b => ({ n: b.n, label: b.label })),
+        });
+        if (!res.ok) throw new Error(res.error);
+        usedModel = res.model ? ` (dùng ${res.model})` : '';
+        for (const a of res.answers) {
+          const b = todo.find(x => x.n === String(a.n));
+          const text = String(a.text || '').trim();
+          if (b) bank[b.key] = { text: wantsCaps(g.text) ? text.toUpperCase() : text, why: a.why, confidence: a.confidence };
+        }
+        writeJSON(LS_AI, bank);
+      }
+      let shown = 0;
+      for (const g of groups) for (const b of g.blanks) if (bank[b.key]) { annotateBlank(b, bank[b.key]); shown++; }
+      Q.busy = false;
+      quizStatus(`Đã gợi ý ${shown}/${total} ô${usedModel}. Xem lại, rồi bấm "Điền gợi ý" hoặc tự gõ.`);
+    } catch (e) {
+      Q.busy = false;
+      quizStatus('Lỗi: ' + e.message);
+    }
+  }
+
   async function suggestQuiz() {
     const qs = readQuiz();
+    const groups = readFill();
+    if (!qs.length && countBlanks(groups)) return suggestFill(groups);
     if (!qs.length) return quizStatus('Không thấy câu hỏi trắc nghiệm trên trang.');
     const bank = readJSON(LS_AI, {});
     const todo = qs.filter(q => !bank[q.key]);
@@ -534,6 +621,17 @@
       });
       n++;
     }
+    let blanks = 0;
+    for (const g of readFill()) for (const b of g.blanks) {
+      const s = bank[b.key];
+      if (!s) continue;
+      b.input.value = s.text;
+      // Ô chữ của LMS ghi nhận giá trị trong oninput (bấm một nút ẩn), nên phát sự kiện như khi bạn tự gõ
+      b.input.dispatchEvent(new Event('input', { bubbles: true }));
+      b.input.dispatchEvent(new Event('change', { bubbles: true }));
+      blanks++;
+    }
+    if (blanks) return quizStatus(`Đã điền ${blanks} ô. Kiểm tra lại, bấm "Lưu câu trả lời" ở từng câu rồi tự bấm "Nộp bài".`);
     quizStatus(n ? `Đã điền ${n} câu. Kiểm tra lại rồi tự bấm "Nộp bài".` : 'Chưa có gợi ý nào, bấm "Gợi ý đáp án" trước.');
   }
 
@@ -808,9 +906,14 @@
     }
     $('.logs').textContent = S.logs.join('\n');
 
-    const nq = readQuiz().length;
+    const fill = readFill();
+    const nb = countBlanks(fill);
+    const nmc = readQuiz().length;
+    const nq = nmc || nb;
     if (!nq && !Q.busy) Q.status = '';
-    $('.qstatus').textContent = Q.status || (nq ? `Trang có ${nq} câu hỏi.` : 'Mở một bài trắc nghiệm (bấm "LÀM BÀI") để dùng.');
+    $('.qstatus').textContent = Q.status || (nmc ? `Trang có ${nmc} câu hỏi.`
+      : nb ? `Trang có ${nb} ô cần điền${fill.some(g => g.audio) ? ' (bài nghe, cần khoá Gemini)' : ''}.`
+      : 'Mở một bài trắc nghiệm (bấm "LÀM BÀI") để dùng.');
     $('.qsuggest').disabled = Q.busy || !nq;
     $('.qfill').disabled = Q.busy || !nq;
   }
