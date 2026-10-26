@@ -31,6 +31,7 @@
     noReqMin: 1,     // thời gian treo mục không có yêu cầu (PDF...)
     skipFolders: [], // id các bài lớn không học
     theme: 'navy',   // giao diện bảng: navy (theo sáng/tối của máy), white, dark
+    autoNextTest: true, // vừa nộp bài kiểm tra và Đạt thì mở bài kiểm tra tiếp theo chưa đạt
   };
 
   const readJSON = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
@@ -435,6 +436,114 @@
     log('Đã dừng.');
   }
 
+  // ---------- Bài tập (bài kiểm tra) tiếp theo ----------
+  // Danh sách bài kiểm tra theo thứ tự mục lục được lưu lại theo lớp (đọc loại của từng mục tốn nhiều lượt gọi API);
+  // trạng thái đạt thì lấy mới mỗi lần từ tiến trình học, cộng với các bài đã thấy "Đạt" trên trang.
+  const LS_TESTS = 'vnuTreoTests', LS_PASSED = 'vnuTreoTestPassed', SS_ROWS = 'vnuTreoTestRows';
+  const T = { busy: false };
+
+  async function loadTests(classId) {
+    const cache = readJSON(LS_TESTS, {});
+    let tests = cache[classId];
+    if (!tests) {
+      const tree = await api('LmsClassTopic/searchFrTop1?classId=' + classId + '&key=');
+      const leaves = [], seen = {};
+      const walk = nodes => {
+        for (const n of nodes || []) {
+          if (n.isFolder) { walk(n.childs); continue; }
+          const key = norm(n.title);
+          seen[key] = key in seen ? seen[key] + 1 : 0;
+          leaves.push({ id: n.id, title: n.title, dup: seen[key] });
+        }
+      };
+      walk(tree);
+      tests = [];
+      for (let i = 0; i < leaves.length; i += 8) {
+        quizStatus(`Đang tìm các bài tập trong lớp (${Math.min(i + 8, leaves.length)}/${leaves.length} mục)…`);
+        const ds = await Promise.all(leaves.slice(i, i + 8).map(l => detail(l.id)));
+        ds.forEach((d, j) => {
+          if (kindOf(d) !== 'test') return;
+          tests.push(Object.assign(leaves[i + j], {
+            opensAt: d.startDate ? new Date(d.startDate).getTime() : 0,
+            closesAt: d.endDate ? new Date(d.endDate).getTime() : 0,
+          }));
+        });
+      }
+      cache[classId] = tests;
+      writeJSON(LS_TESTS, cache);
+    }
+    const learning = await loadLearning(classId);
+    const heads = Object.keys(readJSON(LS_PASSED, {})).filter(k => k.startsWith('head:')).map(k => k.slice(5));
+    return tests.map(t => Object.assign({}, t, {
+      done: !!((learning[t.id] && learning[t.id].isFinish) || heads.some(h => h.startsWith(norm(t.title)))) }));
+  }
+
+  // Mục đang mở: tiêu đề nằm ở đầu khung nội dung. Lấy bài có tiêu đề dài nhất khớp với dòng đầu đó.
+  const viewHead = () => {
+    const view = document.querySelector('app-class-content-view');
+    return view ? norm(view.innerText.split('\n').find(s => s.trim()) || '') : '';
+  };
+  const currentTest = tests => {
+    const head = viewHead();
+    return tests.filter(t => head.startsWith(norm(t.title))).sort((a, b) => b.title.length - a.title.length)[0];
+  };
+
+  async function goNextTest(reason) {
+    const classId = classIdFromUrl();
+    if (!classId || T.busy || S.active) return;
+    T.busy = true;
+    render();
+    try {
+      const tests = await loadTests(classId);
+      const cur = currentTest(tests);
+      const at = cur ? tests.indexOf(cur) : -1;
+      const order = [...tests.slice(at + 1), ...tests.slice(0, Math.max(0, at))];
+      const next = order.find(t => !t.done && !lockReason(t));
+      if (!next) return quizStatus(`Không còn bài tập nào khác chưa đạt (lớp có ${tests.length} bài tập) 🎉`, true);
+      quizStatus(`${reason || ''}Đang mở bài tập tiếp theo: ${next.title}`, true);
+      log('⏭ Mở bài tập: ' + next.title);
+      if (!(await openItem(next))) return quizStatus('Không mở được bài: ' + next.title + '. Hãy mở mục lục rồi bấm lại.', true);
+      quizStatus(`Đã mở: ${next.title}. Bấm "LÀM BÀI" khi sẵn sàng.`, true);
+    } catch (e) {
+      quizStatus('Lỗi: ' + e.message, true);
+    } finally {
+      T.busy = false;
+      render();
+    }
+  }
+
+  // Bảng "Kết quả" của bài kiểm tra: mỗi lần nộp thêm một dòng, cột cuối là "Đạt" / "Không đạt".
+  // Nhớ số dòng đã thấy (trong phiên này) để biết khi nào có lần nộp mới.
+  function testResults() {
+    const view = document.querySelector('app-class-content-view');
+    const table = view && [...view.querySelectorAll('table')].find(t => /Trạng thái/.test(t.innerText) && /Nộp bài/.test(t.innerText));
+    if (!table) return null;
+    const rows = [...table.querySelectorAll('tr')].filter(r => r.querySelector('td'));
+    return { head: viewHead(), total: rows.length, pass: rows.filter(r => /^đạt$/i.test(clean(r.cells[r.cells.length - 1].innerText))).length };
+  }
+
+  function watchTestPass() {
+    if (S.active || T.busy) return;
+    const r = testResults();
+    if (!r || !r.head) return;
+    let seen = {};
+    try { seen = JSON.parse(sessionStorage.getItem(SS_ROWS)) || {}; } catch (e) {}
+    const before = seen[r.head];
+    if (!before || before.total !== r.total || before.pass !== r.pass) {
+      seen[r.head] = { total: r.total, pass: r.pass };
+      try { sessionStorage.setItem(SS_ROWS, JSON.stringify(seen)); } catch (e) {}
+    }
+    if (!before || r.total <= before.total) return;
+    // Có lần nộp mới
+    if (r.pass <= before.pass) return log('Bài vừa nộp chưa Đạt, ở lại để bạn làm lại.');
+    log('Bài vừa nộp đã Đạt.');
+    // Nhớ theo tiêu đề (danh sách bài có thể chưa tải), để nút "Bài tập tiếp theo" bỏ qua bài này
+    const passed = readJSON(LS_PASSED, {});
+    passed['head:' + r.head] = true;
+    writeJSON(LS_PASSED, passed);
+    if (cfg.autoNextTest) goNextTest('Bài vừa nộp đã Đạt. ');
+  }
+
   // ---------- 3. Trợ lý làm bài (AI) ----------
   // Trang làm bài: mỗi câu là .question-item, đề bài ở .question-title. Có các dạng: trắc nghiệm (radio/checkbox trong
   // .question-content label), điền ô chữ (có thể kèm audio), nối cặp kéo thả; ngoài ra bài tập viết và thảo luận dùng CKEditor.
@@ -516,7 +625,8 @@
     window.postMessage(task ? { vnuTreo: 'ai-task', id, task } : { vnuTreo: 'ai-suggest', id, questions }, location.origin);
   });
 
-  function quizStatus(msg) { Q.status = msg; render(); }
+  // sticky: giữ dòng trạng thái kể cả khi trang không có câu hỏi (thông báo chuyển bài tập)
+  function quizStatus(msg, sticky) { Q.status = msg; Q.sticky = !!sticky; render(); }
 
   function annotate(q, s) {
     q.inputs.forEach((inp, i) => {
@@ -942,6 +1052,8 @@
           <div class="qstatus"></div>
           <div class="qrow"><button class="qsuggest">🤖 Gợi ý đáp án</button><button class="qfill">✍ Điền gợi ý</button><button class="qkey">⚙ Khoá API</button></div>
           <div class="qrow wrow" hidden><input class="qidea" placeholder="Ý bạn muốn viết (không bắt buộc)"><button class="qwrite">📝 Viết nháp</button></div>
+          <div class="qrow"><button class="qnext">⏭ Bài tập tiếp theo chưa đạt</button></div>
+          ${box('autoNextTest', 'Nộp bài xong mà Đạt thì tự mở bài tập tiếp theo')}
           <div class="muted">Không tự nộp bài hay đăng bài. Gợi ý được lưu lại: lần sau gặp câu giống hệt sẽ dùng luôn, không tốn tiền API.</div>
         </details>
         <details class="cfg"><summary>Cài đặt</summary>
@@ -959,6 +1071,9 @@
           ${box('resumeVideo', 'Tự phát lại video khi bị dừng')}
           ${box('muteVideo', 'Tắt tiếng video')}
           <div class="muted">Đổi loại mục hoặc chọn bài xong, bấm "Quét lại".</div>
+          <hr>
+          <div class="qrow"><button class="updcheck">⟳ Kiểm tra bản mới</button></div>
+          <div class="muted updres"></div>
         </details>
         <details class="fold"><summary>Chọn bài học</summary><div class="flist muted">Bấm "Quét lại" để tải danh sách bài.</div></details>
         <details open><summary>Danh sách cần học <span class="qcount muted"></span></summary><ol class="queue"></ol></details>
@@ -990,6 +1105,14 @@
     $('.qsuggest').addEventListener('click', () => suggestQuiz());
     $('.qfill').addEventListener('click', () => fillQuiz());
     $('.qwrite').addEventListener('click', () => writeDraft());
+    $('.qnext').addEventListener('click', () => goNextTest());
+    $('.updcheck').addEventListener('click', () => {
+      $('.updcheck').disabled = true;
+      $('.updres').textContent = 'Đang hỏi GitHub…';
+      window.postMessage({ vnuTreo: 'check-update-now' }, location.origin);
+      // Bản Tampermonkey không có background để hỏi
+      setTimeout(() => { if ($('.updcheck').disabled) { $('.updcheck').disabled = false; $('.updres').textContent = 'Không kiểm tra được (bản Tampermonkey không có tính năng này).'; } }, 20000);
+    });
     $('.qkey').addEventListener('click', () => window.postMessage({ vnuTreo: 'open-options' }, location.origin));
     $('.update').addEventListener('click', e => {
       if (!e.target.classList.contains('updlater')) return;
@@ -1089,7 +1212,8 @@
     const w = readWrite();
     const found = [nmc && `${nmc} câu trắc nghiệm`, nb && `${nb} ô cần điền${fill.some(g => g.audio) ? ' (bài nghe, cần khoá Gemini)' : ''}`,
       nm && `${nm} câu nối cặp`].filter(Boolean);
-    if (!found.length && !w && !Q.busy) Q.status = '';
+    if (!found.length && !w && !Q.busy && !Q.sticky) Q.status = '';
+    if ((found.length || w) && Q.sticky && !Q.busy) { Q.status = ''; Q.sticky = false; } // đã vào trang làm bài
     $('.qstatus').textContent = Q.status || (found.length ? `Trang có ${found.join(', ')}.`
       : w ? (w.kind === 'discussion' ? 'Đang mở khung viết thảo luận.' : 'Trang có khung "Bài làm" để viết.')
       : 'Mở một bài làm (bấm "LÀM BÀI"), bài tập viết, hoặc "+ THẢO LUẬN" dưới bài học để dùng.');
@@ -1097,6 +1221,7 @@
     $('.qfill').disabled = Q.busy || !found.length;
     $('.wrow').hidden = !w;
     $('.qwrite').disabled = Q.busy;
+    $('.qnext').disabled = T.busy || S.active || !classIdFromUrl();
   }
 
   window.addEventListener('message', e => {
@@ -1104,7 +1229,19 @@
     // Bấm biểu tượng extension trên thanh công cụ -> bridge.js gửi tin này
     if (e.data.vnuTreo === 'toggle-panel') { buildUI(); if (ui) ui.toggle(); }
     // Có bản mới trên GitHub Releases (background kiểm tra, bridge.js chuyển vào)
-    if (e.data.vnuTreo === 'update') { U = e.data; render(); }
+    if (e.data.vnuTreo === 'update') {
+      U = e.data;
+      if (U.manual && ui) {
+        ui.$('.updcheck').disabled = false;
+        const at = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        // Tự bấm kiểm tra thì hiện lại thông báo bản mới kể cả khi trước đó đã chọn "Để sau"
+        if (U.hasUpdate) writeJSON(LS_UPD_SKIP, '');
+        ui.$('.updres').textContent = U.failed ? `Không hỏi được GitHub lúc ${at}. Kiểm tra mạng rồi thử lại.`
+          : U.hasUpdate ? `Có bản mới v${U.latest} (bạn đang dùng v${U.current}), xem ô thông báo ở đầu bảng.`
+          : `Bạn đang dùng bản mới nhất v${U.current} (kiểm tra lúc ${at}).`;
+      }
+      render();
+    }
     // Extension vừa cập nhật xong: tải lại trang để dùng bản mới (chế độ tự học tự chạy tiếp sau khi tải lại).
     // Đang làm trắc nghiệm thì không tải lại, chỉ nhắc.
     if (e.data.vnuTreo === 'ext-reloaded') {
@@ -1214,7 +1351,7 @@
     resumeIfNeeded();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
-  timer.every(3000, () => { buildUI(); tickVideo(); answerLmsAlert(); if (ui && !ui.panel.hidden && !S.active) render(); });
+  timer.every(3000, () => { buildUI(); tickVideo(); answerLmsAlert(); watchTestPass(); if (ui && !ui.panel.hidden && !S.active) render(); });
   timer.every(20000, () => cfg.keepAlive && pokeActivity());
   // Đồng hồ Worker nhịp 1 giây: nếu khựng lại lâu nghĩa là cả tab đã bị ngưng (tab ngủ hoặc máy ngủ)
   let lastBeat = Date.now();

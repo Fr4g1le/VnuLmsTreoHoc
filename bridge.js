@@ -26,6 +26,12 @@ window.addEventListener('message', e => {
     }
   }
   if (vnuTreo === 'open-options') chrome.runtime.sendMessage({ type: 'open-options' });
+  // Bấm "Kiểm tra bản mới" trong bảng: hỏi GitHub ngay
+  if (vnuTreo === 'check-update-now') {
+    chrome.runtime.sendMessage({ type: 'check-update', force: true })
+      .then(res => window.postMessage({ vnuTreo: 'update', manual: true, ...res }, location.origin))
+      .catch(() => window.postMessage({ vnuTreo: 'update', manual: true, failed: true }, location.origin));
+  }
 });
 
 // Mỗi lần mở trang LMS: hỏi background có bản mới không (background chỉ hỏi GitHub tối đa 6 tiếng một lần)

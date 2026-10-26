@@ -303,29 +303,30 @@ function isNewer(a, b) {
   return false;
 }
 
-async function latestRelease() {
+// force: bạn bấm "Kiểm tra bản mới" -> hỏi GitHub ngay, không dùng kết quả cũ; hỏi không được thì báo failed.
+async function latestRelease(force) {
   const { upd } = await chrome.storage.local.get('upd');
-  if (upd && Date.now() - upd.checkedAt < CHECK_EVERY) return upd;
+  if (!force && upd && Date.now() - upd.checkedAt < CHECK_EVERY) return upd;
   try {
-    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } });
-    if (!r.ok) return upd || null;
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+    if (!r.ok) return force ? Object.assign({}, upd, { failed: true }) : upd || null;
     const j = await r.json();
     const zip = (j.assets || []).find(a => /\.zip$/i.test(a.name));
     const info = { checkedAt: Date.now(), latest: String(j.tag_name || '').replace(/^v/i, ''), url: j.html_url, zip: zip && zip.browser_download_url };
     await chrome.storage.local.set({ upd: info });
     return info;
   } catch (e) {
-    return upd || null; // mất mạng: dùng kết quả lần trước
+    return force ? Object.assign({}, upd, { failed: true }) : upd || null; // mất mạng: dùng kết quả lần trước
   }
 }
 
-async function updateStatus() {
+async function updateStatus(force) {
   const current = chrome.runtime.getManifest().version;
-  const info = await latestRelease();
+  const info = await latestRelease(force);
   const hasUpdate = !!(info && info.latest && isNewer(info.latest, current));
   chrome.action.setBadgeText({ text: hasUpdate ? 'NEW' : '' });
   if (hasUpdate) chrome.action.setBadgeBackgroundColor({ color: '#1a7f37' });
-  return { hasUpdate, current, latest: info && info.latest, url: info && info.url, zip: info && info.zip };
+  return { hasUpdate, current, latest: info && info.latest, url: info && info.url, zip: info && info.zip, failed: !!(info && info.failed) };
 }
 
 // CapNhat.bat ghi đè file trong thư mục extension. Extension cài từ thư mục đọc file trực tiếp từ đĩa,
@@ -347,7 +348,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg && msg.type === 'check-update') {
-    updateStatus().then(sendResponse);
+    updateStatus(msg.force).then(sendResponse);
     return true;
   }
   if (msg && msg.type === 'open-options') chrome.runtime.openOptionsPage();

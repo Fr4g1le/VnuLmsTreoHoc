@@ -25,6 +25,8 @@ Extension cho Chrome / Brave / Edge giúp treo máy học trên [LMS VNU](https:
   - **Trắc nghiệm**, kể cả **đọc hiểu** (đoạn văn nằm trong đề).
   - **Điền ô chữ**: điền chỗ trống, viết lại câu. Bài **nghe** có file audio thì AI nghe audio rồi gợi ý từng ô (viết IN HOA nếu đề yêu cầu). Bạn tự bấm **Lưu câu trả lời** ở từng câu. Bài nghe cần khoá Gemini vì Claude không nghe được audio.
   - **Nối cặp kéo thả**: nối câu hỏi với câu trả lời, sắp xếp từ thành câu. Điền gợi ý sẽ tự kéo từng mục vào đúng ô.
+- **Sang bài tập tiếp theo:** nút **⏭ Bài tập tiếp theo chưa đạt** mở bài kiểm tra kế tiếp (theo thứ tự mục lục) mà bạn chưa đạt. Bật sẵn tuỳ chọn tự chuyển: vừa nộp bài mà kết quả mới là **Đạt** thì tự mở bài tiếp theo; chưa đạt thì ở lại để làm lại. Extension không tự bấm **LÀM BÀI**.
+- **Kiểm tra bản mới:** extension tự hỏi GitHub tối đa 6 tiếng một lần; muốn hỏi ngay thì vào **Cài đặt → ⟳ Kiểm tra bản mới**.
 - **Viết nháp (AI):** ở bài tập nộp bằng bài viết (khung **Bài làm**) hoặc khi bấm **+ THẢO LUẬN** dưới bài học, bấm **📝 Viết nháp** (có thể gõ trước ý bạn muốn viết) để AI viết bản nháp vào khung. Bạn đọc, sửa, rồi tự bấm **Xác nhận nộp bài** / **Lưu lại**; extension không bao giờ tự nộp hay đăng.
 
 ## Cách hoạt động
