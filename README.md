@@ -25,7 +25,7 @@ Extension cho Chrome / Brave / Edge giúp treo máy học trên [LMS VNU](https:
   - **Trắc nghiệm**: chọn một / chọn nhiều / **chọn từ danh sách thả xuống**, kể cả **đọc hiểu** (đoạn văn trong đề), câu nghe theo audio của đề chung, và câu mà đề là **hình ảnh** (ảnh được gửi kèm cho AI).
   - **Điền ô chữ**: điền chỗ trống, viết lại câu. Bài **nghe** có file audio thì AI nghe audio rồi gợi ý từng ô (viết IN HOA nếu đề yêu cầu). Bạn tự bấm **Lưu câu trả lời** ở từng câu. Bài nghe cần khoá Gemini vì Claude không nghe được audio.
   - **Nối cặp kéo thả**: nối câu hỏi với câu trả lời, sắp xếp từ thành câu. Điền gợi ý sẽ tự kéo từng mục vào đúng ô.
-- **Sang bài tập tiếp theo:** nút **⏭ Bài tập tiếp theo chưa đạt** mở bài kiểm tra kế tiếp (theo thứ tự mục lục) mà bạn chưa đạt. Bật sẵn tuỳ chọn tự chuyển: vừa nộp bài mà kết quả mới là **Đạt** thì tự mở bài tiếp theo; chưa đạt thì ở lại để làm lại. Extension không tự bấm **LÀM BÀI**.
+- **Sang bài tập tiếp theo:** nút **⏭ Bài tập tiếp theo chưa đạt** mở bài kiểm tra kế tiếp (theo thứ tự mục lục) mà bạn chưa đạt điểm tối thiểu; bài mở ra mà bảng Kết quả đã có dòng **Đạt** thì tự bỏ qua. Bật sẵn tuỳ chọn tự chuyển: vừa nộp bài mà kết quả mới là **Đạt** thì tự mở bài tiếp theo; chưa đạt thì ở lại để làm lại. Extension không tự bấm **LÀM BÀI**.
 - **Kiểm tra bản mới:** extension tự hỏi GitHub tối đa 6 tiếng một lần; muốn hỏi ngay thì vào **Cài đặt → ⟳ Kiểm tra bản mới**.
 - **Viết nháp (AI):** ở bài tập nộp bằng bài viết (khung **Bài làm**) hoặc khi bấm **+ THẢO LUẬN** dưới bài học, bấm **📝 Viết nháp** (có thể gõ trước ý bạn muốn viết) để AI viết bản nháp vào khung. Bạn đọc, sửa, rồi tự bấm **Xác nhận nộp bài** / **Lưu lại**; extension không bao giờ tự nộp hay đăng.
 
@@ -78,6 +78,8 @@ Lưu ý:
 4. Xem gợi ý (khung xanh + giải thích dưới mỗi câu), bấm **✍ Điền gợi ý** hoặc tự chọn, kiểm tra lại rồi **tự bấm Nộp bài**.
 
 Bài nghe điền chỗ trống làm giống hệt: bấm **🤖 Gợi ý đáp án** (AI nghe audio mất khoảng 30-60 giây), **✍ Điền gợi ý**, rồi bấm **Lưu câu trả lời** ở từng câu trước khi nộp.
+
+**Tiết kiệm lượt:** extension yêu cầu AI suy nghĩ ít, giải thích ngắn, và nhớ model vừa trả lời nhanh để lần sau gọi trước. Câu đã gợi ý được lưu lại, gặp lại không hỏi AI nữa.
 
 **Gemini chậm?** Mặc định extension ở chế độ **Nhanh**: model đang chọn chưa trả lời sau 10 giây (bài nghe 30 giây) thì gọi thêm model dự phòng (3.6-flash, 3.5-flash-lite…) và lấy kết quả của model trả lời xong trước. Muốn luôn chờ model đã chọn thì vào **⚙ Khoá API → Khi model chậm → Chính xác**.
 

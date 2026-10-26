@@ -12,7 +12,7 @@ Với mỗi câu hỏi trắc nghiệm được gửi đến, chọn đáp án �
 - "answers" là danh sách đáp án, đánh số từ 0. Trả về số thứ tự đáp án bạn chọn trong "choices".
 - Câu có "multi": false chỉ chọn đúng 1 đáp án. Câu có "multi": true chọn tất cả đáp án đúng.
 - Đọc kỹ đề: nhiều câu hỏi đáp án SAI / KHÔNG đúng.
-- "why": giải thích ngắn gọn bằng tiếng Việt (1-2 câu), nêu căn cứ nếu có (điều luật, khái niệm).
+- "why": giải thích bằng tiếng Việt, tối đa 15 từ, nêu căn cứ nếu có (điều luật, khái niệm).
 - "confidence": "cao", "trung bình" hoặc "thấp".`;
 
 const SCHEMA = {
@@ -72,6 +72,16 @@ const GEMINI_IDLE = 150000;
 
 // req = { system, parts, schema }: parts là nội dung gửi lên (chữ, có thể kèm audio).
 // Dùng bản trả về dạng luồng (SSE): biết ngay model đã bắt đầu trả lời, và báo tiến độ trong lúc chờ.
+// Suy nghĩ ít để đỡ tốn token và trả lời nhanh: Gemini 3.x dùng mức "low", Gemini 2.5 tắt hẳn.
+// Model nào báo không nhận tuỳ chọn này thì nhớ lại (noThinking) và gửi lại không kèm.
+const noThinking = new Set();
+function thinkingFor(model) {
+  if (noThinking.has(model)) return {};
+  if (/^gemini-[3-9]/.test(model)) return { thinkingConfig: { thinkingLevel: 'low' } };
+  if (/^gemini-2\.5/.test(model)) return { thinkingConfig: { thinkingBudget: /pro/.test(model) ? 128 : 0 } };
+  return {};
+}
+
 // signal: huỷ từ bên ngoài (đã có model khác trả lời xong). onStream: gọi khi nhận được chữ đầu tiên của câu trả lời.
 async function callGemini(model, key, req, progress, signal, onStream = () => {}) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
@@ -90,7 +100,7 @@ async function callGemini(model, key, req, progress, signal, onStream = () => {}
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: req.system }] },
           contents: [{ role: 'user', parts: req.parts }],
-          generationConfig: { responseMimeType: 'application/json', responseSchema: req.schema },
+          generationConfig: Object.assign({ responseMimeType: 'application/json', responseSchema: req.schema }, thinkingFor(model)),
         }),
       });
     } catch (e) {
@@ -102,6 +112,10 @@ async function callGemini(model, key, req, progress, signal, onStream = () => {}
       const err = Array.isArray(body) ? body[0] && body[0].error : body.error;
       const msg = (err && err.message) || res.statusText;
       if (res.status === 400 && /api key/i.test(msg)) throw new GeminiError('Khoá Gemini không hợp lệ.', { status: 400 });
+      if (res.status === 400 && /thinking/i.test(msg) && !noThinking.has(model)) {
+        noThinking.add(model);
+        throw new GeminiError(`Gemini "${model}" không nhận tuỳ chọn suy nghĩ, gửi lại.`, { status: 400, retry: true });
+      }
       if (res.status === 503 || res.status === 500) throw new GeminiError(`Gemini "${model}" đang quá tải.`, { status: res.status, retry: true, nextModel: true });
       if (res.status === 429) throw new GeminiError(`Gemini "${model}" hết lượt miễn phí tạm thời.`, { status: 429, nextModel: true });
       if (res.status === 404) throw new GeminiError(`Gemini không có model "${model}".`, { status: 404, nextModel: true });
@@ -161,6 +175,9 @@ async function callGeminiRetry(model, key, req, progress, signal, onStream) {
   }
 }
 
+// Model vừa trả lời xong được gọi trước trong 30 phút sau đó (chế độ Nhanh): đỡ chờ model đang quá tải.
+const LAST_GOOD_FOR = 30 * 60000;
+
 // Bao lâu chưa có model nào bắt đầu trả lời thì gọi thêm model kế tiếp (chế độ Nhanh). Bài có audio cần nghe lâu hơn.
 const HEDGE_TEXT = 10000, HEDGE_AUDIO = 30000;
 
@@ -171,8 +188,12 @@ async function askGemini(req, progress = () => {}) {
   const { geminiKey, geminiModel, geminiSpeed } = await chrome.storage.local.get(['geminiKey', 'geminiModel', 'geminiSpeed']);
   if (!geminiKey) throw new GeminiError('Chưa có khoá Gemini. Bấm "⚙ Khoá API" để nhập.');
   const chosen = (geminiModel || DEFAULT_GEMINI_MODEL).trim();
-  const models = [chosen, ...GEMINI_FALLBACKS.filter(m => m !== chosen)];
+  let models = [chosen, ...GEMINI_FALLBACKS.filter(m => m !== chosen)];
   const fast = geminiSpeed !== 'accurate';
+  const { geminiLastGood: good } = await chrome.storage.local.get('geminiLastGood');
+  if (fast && good && Date.now() - good.at < LAST_GOOD_FOR && models.includes(good.model)) {
+    models = [good.model, ...models.filter(m => m !== good.model)];
+  }
   const hedge = req.parts.some(p => p.inlineData && /^audio\//.test(p.inlineData.mimeType)) ? HEDGE_AUDIO : HEDGE_TEXT;
   const usable = e => e instanceof GeminiError && (e.retry || e.nextModel);
 
@@ -199,7 +220,10 @@ async function askGemini(req, progress = () => {}) {
       if (running.size > 1) progress(`Model trước chậm, gọi thêm ${model}…`);
       armHedge();
       callGeminiRetry(model, geminiKey, req, progress, ac.signal, () => { streaming = true; clearTimeout(timer); })
-        .then(result => finish(null, { ...result, model }), e => {
+        .then(result => {
+          chrome.storage.local.set({ geminiLastGood: { model, at: Date.now() } });
+          finish(null, { ...result, model });
+        }, e => {
           running.delete(model);
           if (settled) return;
           if (!usable(e)) return finish(e);
@@ -216,7 +240,7 @@ async function askGemini(req, progress = () => {}) {
 // ---------- Claude ----------
 const suggestClaude = (questions, progress) => askClaude(SYSTEM, SCHEMA, JSON.stringify({ questions }), progress);
 
-async function askClaude(system, schema, content, progress = () => {}) {
+async function askClaude(system, schema, content, progress = () => {}, effort = 'low') {
   const { apiKey, model } = await chrome.storage.local.get(['apiKey', 'model']);
   if (!apiKey) throw new Error('Chưa có khoá API. Bấm "Cài khoá API" để nhập.');
   progress(`Đang hỏi ${model || DEFAULT_MODEL}…`);
@@ -227,7 +251,7 @@ async function askClaude(system, schema, content, progress = () => {}) {
     max_tokens: 16000,
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
-    output_config: { effort: 'medium', format: { type: 'json_schema', schema } },
+    output_config: { effort, format: { type: 'json_schema', schema } },
     system,
     messages: [{ role: 'user', content }],
   });
@@ -269,7 +293,7 @@ const TASKS = {
 - Nếu có file audio: nghe hết, điền đúng từ hoặc cụm từ nghe được, khớp ngữ pháp với câu trong đề và giới hạn số từ nếu đề có nêu.
 - Làm đúng mọi quy định trong đề (dấu chấm cuối câu, viết hoa chữ đầu câu...).
 - "text": chỉ ghi nội dung cần điền vào ô, không ghi số thứ tự. Nếu "caps" là true thì viết IN HOA.
-- "why": giải thích ngắn bằng tiếng Việt (1 câu), trích ý nghe được trong audio nếu có.
+- "why": giải thích bằng tiếng Việt, tối đa 12 từ (trích ý nghe được nếu có audio).
 - "confidence": "cao", "trung bình" hoặc "thấp".`,
     schema: answersOf({ n: { type: 'string' }, text: { type: 'string' }, why: { type: 'string' }, confidence: CONFIDENCE }),
   },
@@ -279,7 +303,7 @@ const TASKS = {
 - "context" là đề chung (có thể có đoạn văn cần đọc). Mỗi câu trong "questions" có "n", "title" (đề riêng nếu có), "items" (các mục để kéo, đánh số từ 0) và "targets" (các ô đích, đánh số từ 0).
 - Ghép mỗi mục với ô đích đúng của nó. Ví dụ: câu hỏi -> câu trả lời trong đoạn văn; hoặc bài sắp xếp câu, khi items là số thứ tự vị trí (1, 2, 3...) và targets là các từ: đặt số vị trí vào từ đứng ở vị trí đó trong câu đúng.
 - "pairs": mỗi phần tử là { "item": số của mục, "target": số của ô đích }. Mỗi mục dùng đúng một lần.
-- "why": giải thích ngắn bằng tiếng Việt (1 câu), với bài sắp xếp thì ghi câu hoàn chỉnh.
+- "why": tối đa 15 từ bằng tiếng Việt; với bài sắp xếp thì chỉ ghi câu hoàn chỉnh.
 - "confidence": "cao", "trung bình" hoặc "thấp".`,
     schema: answersOf({
       n: { type: 'string' },
@@ -332,7 +356,7 @@ async function runTask({ kind, audio, images = [], ...data }, progress) {
     { type: 'text', text: `Ảnh ${im.id}:` },
     { type: 'image', source: { type: 'base64', media_type: im.mime, data: im.data } },
   ])] : text;
-  return askClaude(task.system, task.schema, content, progress);
+  return askClaude(task.system, task.schema, content, progress, kind === 'write' ? 'medium' : 'low');
 }
 
 function describeError(e) {

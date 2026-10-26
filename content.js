@@ -476,7 +476,7 @@
     const learning = await loadLearning(classId);
     const heads = Object.keys(readJSON(LS_PASSED, {})).filter(k => k.startsWith('head:')).map(k => k.slice(5));
     return tests.map(t => Object.assign({}, t, {
-      done: !!((learning[t.id] && learning[t.id].isFinish) || heads.some(h => h.startsWith(norm(t.title)))) }));
+      done: !!((learning[t.id] && (learning[t.id].isPassed || learning[t.id].isFinish)) || heads.some(h => h.startsWith(norm(t.title)))) }));
   }
 
   // Mục đang mở: tiêu đề nằm ở đầu khung nội dung. Lấy bài có tiêu đề dài nhất khớp với dòng đầu đó.
@@ -498,13 +498,24 @@
       const tests = await loadTests(classId);
       const cur = currentTest(tests);
       const at = cur ? tests.indexOf(cur) : -1;
-      const order = [...tests.slice(at + 1), ...tests.slice(0, Math.max(0, at))];
-      const next = order.find(t => !t.done && !lockReason(t));
-      if (!next) return quizStatus(`Không còn bài tập nào khác chưa đạt (lớp có ${tests.length} bài tập) 🎉`, true);
-      quizStatus(`${reason || ''}Đang mở bài tập tiếp theo: ${next.title}`, true);
-      log('⏭ Mở bài tập: ' + next.title);
-      if (!(await openItem(next))) return quizStatus('Không mở được bài: ' + next.title + '. Hãy mở mục lục rồi bấm lại.', true);
-      quizStatus(`Đã mở: ${next.title}. Bấm "LÀM BÀI" khi sẵn sàng.`, true);
+      const order = [...tests.slice(at + 1), ...tests.slice(0, Math.max(0, at))].filter(t => !t.done && !lockReason(t));
+      // Mở thử từng bài: bảng Kết quả của bài đã có dòng "Đạt" (tiến trình học chưa kịp cập nhật) thì ghi nhớ và mở bài sau
+      for (const next of order.slice(0, 15)) {
+        quizStatus(`${reason || ''}Đang mở bài tập tiếp theo: ${next.title}`, true);
+        log('⏭ Mở bài tập: ' + next.title);
+        if (!(await openItem(next))) return quizStatus('Không mở được bài: ' + next.title + '. Hãy mở mục lục rồi bấm lại.', true);
+        let r = null;
+        for (let i = 0; i < 8 && !(r = testResults()); i++) await sleep(500);
+        if (r && r.pass > 0) {
+          log('Bài này đã có lần Đạt, bỏ qua: ' + next.title);
+          const passed = readJSON(LS_PASSED, {});
+          passed['head:' + r.head] = true;
+          writeJSON(LS_PASSED, passed);
+          continue;
+        }
+        return quizStatus(`Đã mở: ${next.title} (chưa đạt). Bấm "LÀM BÀI" khi sẵn sàng.`, true);
+      }
+      quizStatus(order.length ? 'Các bài tập tiếp theo đều đã Đạt. Bấm lại để tìm tiếp.' : `Không còn bài tập nào khác chưa đạt (lớp có ${tests.length} bài tập) 🎉`, true);
     } catch (e) {
       quizStatus('Lỗi: ' + e.message, true);
     } finally {

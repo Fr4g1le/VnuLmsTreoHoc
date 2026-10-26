@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "VNU LMS - Treo học",
-  "version": "3.6",
+  "version": "3.7",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnNqBe+GCKAdyLNKo3jQscbEyQQSeMt0fuRraUrhsID5pz6DaviuYLYDkE/TcwO/XaS8JrMfvdBxEN2z44uFQD+PB2OsDdXaEmwK+CBBH4Xe4cCwtx1dYneQw8RA3KJkmK0IR+6NYjv0Rh1M1P73/C+TjTBVziAgaS2vhmfF10j3ZNM1u31saFhnA+pKeLIqDfz8SDJ33tR0PKQzF7hay0ISUp9XVH4xlIREqKYDZsmMr6r538Utgt52rmaAtGiaBQ9bu5hizN8MvXCQr3otFop1mrLTFp6xyqIoRDo5/hE0hIqoA6C9Os8x9KXEW6l11imQSC4wh1ZLnfqnz+ImMywIDAQAB",
   "description": "Tự học lần lượt các mục trên LMS VNU cho đến khi đạt yêu cầu, giữ video chạy khi treo máy, gợi ý đáp án trắc nghiệm bằng AI (Gemini miễn phí hoặc Claude).",
   "action": {
