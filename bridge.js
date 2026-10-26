@@ -18,3 +18,14 @@ window.addEventListener('message', e => {
 chrome.runtime.sendMessage({ type: 'check-update' })
   .then(res => res && window.postMessage({ vnuTreo: 'update', ...res }, location.origin))
   .catch(() => {});
+
+// Sau khi chạy CapNhat.bat: background tự khởi động lại khi thấy file mới trên đĩa. Khi đó script này mất kết nối
+// với extension (chrome.runtime.id thành undefined) -> báo trang tải lại để dùng bản mới.
+const reloadTimer = setInterval(() => {
+  if (!chrome.runtime || !chrome.runtime.id) {
+    clearInterval(reloadTimer);
+    window.postMessage({ vnuTreo: 'ext-reloaded' }, location.origin);
+    return;
+  }
+  chrome.runtime.sendMessage({ type: 'check-reload' }).catch(() => {});
+}, 30000);

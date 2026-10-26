@@ -129,6 +129,10 @@ AI có thể sai, nhất là câu hỏi kiểu "đáp án nào SAI". Gợi ý đ
 
 Khi có bản mới, biểu tượng extension hiện chữ **NEW**, nút "Treo học" có dấu **⬆**, và trong bảng có dòng xanh **"Có bản mới vX.Y"** kèm nút **Tải bản mới** (extension tự kiểm tra GitHub, tối đa 6 tiếng một lần).
 
+**Từ v3.0:** mở thư mục extension, **nhấp đúp `CapNhat.bat`**. File này tải bản mới nhất từ GitHub và ghi đè vào thư mục; extension tự khởi động lại sau khoảng 30 giây và trang LMS tự tải lại (đang làm trắc nghiệm thì chỉ nhắc, không tải lại).
+
+Bản cũ chưa có `CapNhat.bat` thì cập nhật bằng tay:
+
 1. Bấm **Tải bản mới** (hoặc tải ZIP như **Bước 1**). Trong zip luôn là thư mục **`VnuLmsTreoHoc`**: giải nén **đè lên** thư mục cũ.
 2. Vào `brave://extensions` (hoặc `chrome://extensions`), bấm **⟳** ở thẻ "VNU LMS - Treo học".
 
@@ -136,7 +140,7 @@ Từ **v2.9**, extension có mã ID cố định (`phjfhfofmfgcdellcpndceejfkkkj
 
 > **Lên v2.9 từ bản cũ (làm một lần):** ở trang extensions, bấm **Remove** (Xoá) **tất cả** thẻ "VNU LMS - Treo học" cũ, rồi **Load unpacked** thư mục `VnuLmsTreoHoc` của bản v2.9 và nhập lại khoá AI **lần cuối**. Kiểm tra mã ID trên thẻ phải là `phjfhfofmfgcdellcpndceejfkkkjjhj`.
 
-Extension cài từ thư mục **không tự cập nhật được** (giới hạn của trình duyệt), nên vẫn cần làm 2 bước trên mỗi khi có bản mới.
+Extension cài từ thư mục **không tự cập nhật được** (giới hạn của trình duyệt), nên mỗi khi có bản mới vẫn cần chạy `CapNhat.bat` hoặc làm 2 bước trên.
 
 ## Gặp lỗi?
 

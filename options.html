@@ -4,21 +4,43 @@
   <meta charset="utf-8">
   <title>Treo học VNU - Cài đặt AI</title>
   <style>
-    body { font: 14px system-ui, "Segoe UI", sans-serif; max-width: 540px; margin: 32px auto; padding: 0 16px; color: #1f2328; }
-    h1 { font-size: 18px; }
-    h2 { font-size: 15px; margin-top: 28px; }
-    label { display: block; margin: 14px 0 4px; font-weight: 600; }
-    input, select { width: 100%; padding: 8px; box-sizing: border-box; font: inherit; }
-    button { margin-top: 20px; padding: 8px 16px; font: inherit; font-weight: 600; color: #fff; background: #1f6feb; border: 0; border-radius: 6px; cursor: pointer; }
-    .muted { color: #57606a; font-size: 13px; }
-    .box { border: 1px solid #d0d7de; border-radius: 8px; padding: 4px 14px 14px; margin-top: 12px; }
+    :root { --ink: #14213d; --blue: #2457a8; --paper: #fff; --bg: #eef1f6; --line: #dfe4ec; --text: #1a2233; --sub: #5d6880; --go: #1d7a4e;
+      color-scheme: light; }
+    @media (prefers-color-scheme: dark) {
+      :root { --paper: #171c26; --bg: #10141c; --line: #2e3646; --text: #e4e8f0; --sub: #98a2b6; --blue: #6f9be6; --go: #4cc287; color-scheme: dark; }
+    }
+    * { box-sizing: border-box; }
+    body { font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+    .hero { background: var(--ink); color: #fff; padding: 36px 16px 64px; }
+    .hero > div, main { max-width: 560px; margin: 0 auto; }
+    h1 { font-size: 24px; font-weight: 700; margin: 0 0 6px; }
+    .hero p { margin: 0; color: #b4c1dc; max-width: 60ch; }
+    main { background: var(--paper); border-radius: 14px; margin-top: -40px; padding: 24px; box-shadow: 0 12px 32px rgba(10,20,40,.12); }
+    @media (max-width: 600px) { main { margin: -40px 12px 24px; padding: 18px; } }
+    h2 { font-size: 15px; margin: 0 0 4px; }
+    label { display: block; margin: 16px 0 6px; font-weight: 600; }
+    input, select { width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--paper);
+      border: 1px solid var(--line); border-radius: 9px; }
+    input:focus, select:focus { outline: 2px solid var(--blue); outline-offset: 1px; border-color: transparent; }
+    a { color: var(--blue); font-weight: 600; }
+    .muted { color: var(--sub); font-size: 13px; margin: 6px 0 0; }
+    .box { border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-top: 16px; }
     .box[hidden] { display: none; }
-    #status { margin-left: 8px; color: #1a7f37; }
+    .box label:first-of-type { margin-top: 14px; }
+    .actions { display: flex; align-items: center; gap: 12px; margin-top: 22px; }
+    button { padding: 10px 22px; font: inherit; font-weight: 700; color: #fff; background: var(--ink); border: 0; border-radius: 9px; cursor: pointer; }
+    @media (prefers-color-scheme: dark) { button { background: var(--blue); color: #0d1424; } }
+    button:hover { filter: brightness(1.15); }
+    button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+    #status { color: var(--go); font-weight: 600; }
   </style>
 </head>
 <body>
-  <h1>Trợ lý trắc nghiệm (AI)</h1>
-  <p class="muted">Khoá chỉ lưu trong trình duyệt này, trang LMS không đọc được. Đừng gửi khoá cho ai.</p>
+  <div class="hero"><div>
+    <h1>Trợ lý trắc nghiệm (AI)</h1>
+    <p>Khoá chỉ lưu trong trình duyệt này, trang LMS không đọc được. Đừng gửi khoá cho ai.</p>
+  </div></div>
+  <main>
 
   <label for="provider">Dùng AI của</label>
   <select id="provider">
@@ -56,7 +78,8 @@
     </select>
   </div>
 
-  <button id="save">Lưu</button><span id="status"></span>
+  <div class="actions"><button id="save">Lưu</button><span id="status" role="status"></span></div>
+  </main>
   <script src="options.js"></script>
 </body>
 </html>

@@ -17,6 +17,7 @@ Extension cho Chrome / Brave / Edge giúp treo máy học trên [LMS VNU](https:
 - **Mục PDF / tài liệu:** mục không yêu cầu thời gian được treo theo số phút bạn chọn.
 - **Tự xác nhận "Bạn có đang học tập không ?"** ngay khi hộp thoại hiện ra.
 - **Chống dừng khi đổi tab** và tự phát lại video khi bị dừng.
+- **Cập nhật một chạm:** nhấp đúp `CapNhat.bat` trong thư mục extension; extension tự khởi động lại và trang LMS tự tải lại.
 - **Tắt tiếng nhanh** bằng một nút, để làm việc khác trong lúc treo.
 - **Bảng điều khiển:** chọn loại mục (video, PDF, bài đọc…), chọn bài học muốn chạy, xem danh sách, thời gian còn lại và nhật ký.
 - Chế độ tự học không bao giờ mở bài kiểm tra / trắc nghiệm.
@@ -81,6 +82,7 @@ AI có thể sai, nhất là với câu hỏi lừa ("đáp án nào SAI") hoặ
 | `bridge.js` | Cầu nối giữa trang và background |
 | `background.js` | Gọi Claude (đã đóng gói sẵn từ `src/background.js`), mở/đóng bảng khi bấm biểu tượng |
 | `options.html`, `options.js` | Trang nhập khoá API và chọn model |
+| `CapNhat.bat` | Nhấp đúp để tải bản mới nhất từ Releases và ghi đè vào thư mục extension |
 | `vnu-lms-treo-video.user.js` | Bản dùng cho Tampermonkey (không có AI) |
 
 Sửa `src/background.js` thì build lại bằng `npm install` rồi `npm run build`.

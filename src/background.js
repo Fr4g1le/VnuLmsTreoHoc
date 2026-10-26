@@ -204,7 +204,24 @@ async function updateStatus() {
   return { hasUpdate, current, latest: info && info.latest, url: info && info.url, zip: info && info.zip };
 }
 
+// CapNhat.bat ghi đè file trong thư mục extension. Extension cài từ thư mục đọc file trực tiếp từ đĩa,
+// nên manifest.json trên đĩa mới hơn bản đang chạy nghĩa là vừa cập nhật xong -> tự khởi động lại.
+async function reloadIfUpdatedOnDisk() {
+  try {
+    const disk = await (await fetch(chrome.runtime.getURL('manifest.json'), { cache: 'no-store' })).json();
+    if (isNewer(disk.version, chrome.runtime.getManifest().version)) {
+      chrome.runtime.reload();
+      return true;
+    }
+  } catch (e) {}
+  return false;
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg && msg.type === 'check-reload') {
+    reloadIfUpdatedOnDisk().then(sendResponse);
+    return true;
+  }
   if (msg && msg.type === 'check-update') {
     updateStatus().then(sendResponse);
     return true;
