@@ -32,6 +32,7 @@
     skipFolders: [], // id các bài lớn không học
     theme: 'navy',   // giao diện bảng: navy (theo sáng/tối của máy), white, dark
     autoNextTest: true, // vừa nộp bài kiểm tra và Đạt thì mở bài kiểm tra tiếp theo chưa đạt
+    corner: 'bl',    // góc đặt bảng: bl, br, tl, tr (dưới/trên + trái/phải)
   };
 
   const readJSON = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch (e) { return d; } };
@@ -936,6 +937,13 @@
       background: var(--paper); color: var(--text); border-radius: 14px; font-size: 13px; line-height: 1.45;
       box-shadow: 0 18px 48px rgba(10,20,40,.32), 0 0 0 1px rgba(20,33,61,.12); scrollbar-width: thin; }
     .panel[hidden] { display: none; }
+    /* Góc đặt bảng: nút ở góc, bảng mở về phía giữa màn hình */
+    :host([data-corner^=t]) .panel { bottom: auto; top: 50px; }
+    :host([data-corner$=r]) .panel { left: auto; right: 0; }
+    .fab, header { touch-action: none; }
+    header { cursor: grab; }
+    :host([data-dragging]) .fab, :host([data-dragging]) header { cursor: grabbing; }
+    :host([data-dragging]) .panel { opacity: .85; }
     header { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 12px 16px;
       position: sticky; top: 0; z-index: 2; background: var(--hd); color: var(--hd-text); border-bottom: 1px solid var(--hd-rule); }
     header b { font-size: 15px; font-weight: 700; letter-spacing: .01em; }
@@ -1036,7 +1044,13 @@
   function buildUI() {
     if (ui || !document.body) return;
     const host = document.createElement('div');
-    host.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:2147483647;';
+    const place = () => {
+      const c = /^[bt][lr]$/.test(cfg.corner) ? cfg.corner : 'bl';
+      host.dataset.corner = c;
+      host.style.cssText = 'position:fixed;z-index:2147483647;' +
+        (c[0] === 't' ? 'top:12px;' : 'bottom:12px;') + (c[1] === 'r' ? 'right:12px;' : 'left:12px;');
+    };
+    place();
     host.dataset.theme = cfg.theme;
     const root = host.attachShadow({ mode: 'open' });
     const box = (k, text) => `<label><input type="checkbox" data-k="${k}"><span>${text}</span></label>`;
@@ -1065,6 +1079,10 @@
           <label class="num">Mục không yêu cầu thời gian treo <input type="number" min="0.5" max="60" step="0.5" data-k="noReqMin"> phút</label>
           <label class="num">Giao diện bảng <select data-k="theme"><option value="navy">Xanh đậm (theo sáng/tối của máy)</option>
             <option value="white">Trắng</option><option value="dark">Tối</option></select></label>
+          <label class="num">Vị trí bảng <select data-k="corner"><option value="bl">Góc dưới bên trái</option>
+            <option value="br">Góc dưới bên phải</option><option value="tl">Góc trên bên trái</option>
+            <option value="tr">Góc trên bên phải</option></select></label>
+          <div class="muted">Hoặc kéo nút "Treo học" / đầu bảng sang góc khác.</div>
           <hr>
           ${box('refreshProgress', 'Mở tab "Tiến trình học tập" sau mỗi mục để cập nhật')}
           ${box('keepAlive', 'Tự xác nhận "Bạn có đang học tập không ?" và chống dừng khi đổi tab')}
@@ -1091,7 +1109,47 @@
       render();
     };
     ui.toggle = togglePanel;
-    ui.fab.addEventListener('click', () => togglePanel());
+    ui.fab.title = 'Bấm để mở/đóng bảng, kéo để đổi góc';
+    ui.fab.addEventListener('click', () => {
+      if (ui.dragged) { ui.dragged = false; return; } // vừa kéo xong, không tính là bấm
+      togglePanel();
+    });
+
+    // Kéo nút hoặc đầu bảng: bảng đi theo chuột, thả ra thì dính vào góc gần nhất
+    const startDrag = (e, el) => {
+      if (e.button !== 0 || e.target.closest('.x')) return;
+      const r = host.getBoundingClientRect();
+      const dx = e.clientX - r.left, dy = e.clientY - r.top, sx = e.clientX, sy = e.clientY;
+      let moved = false;
+      el.setPointerCapture(e.pointerId);
+      const move = ev => {
+        if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+        moved = true;
+        host.dataset.dragging = '';
+        const x = Math.min(Math.max(0, ev.clientX - dx), innerWidth - r.width);
+        const y = Math.min(Math.max(0, ev.clientY - dy), innerHeight - r.height);
+        host.style.cssText = `position:fixed;z-index:2147483647;left:${x}px;top:${y}px;`;
+      };
+      const up = () => {
+        el.removeEventListener('pointermove', move);
+        el.removeEventListener('pointerup', up);
+        el.removeEventListener('pointercancel', up);
+        delete host.dataset.dragging;
+        if (!moved) return;
+        if (el === ui.fab) ui.dragged = true;
+        const b = host.getBoundingClientRect();
+        cfg.corner = (b.top + b.height / 2 < innerHeight / 2 ? 't' : 'b') + (b.left + b.width / 2 < innerWidth / 2 ? 'l' : 'r');
+        saveCfg();
+        place();
+        const sel = root.querySelector('[data-k="corner"]');
+        if (sel) sel.value = cfg.corner;
+      };
+      el.addEventListener('pointermove', move);
+      el.addEventListener('pointerup', up);
+      el.addEventListener('pointercancel', up);
+    };
+    ui.fab.addEventListener('pointerdown', e => startDrag(e, ui.fab));
+    $('header').addEventListener('pointerdown', e => startDrag(e, $('header')));
     $('.x').addEventListener('click', () => togglePanel(false));
     $('.go').addEventListener('click', () => (S.active ? stop() : runLoop()));
     $('.scan').addEventListener('click', () => scan().catch(e => log('Lỗi: ' + e.message)));
@@ -1135,6 +1193,7 @@
         setK(k, input.type === 'checkbox' ? input.checked : input.tagName === 'SELECT' ? input.value : Math.max(0, Number(input.value) || 0));
         saveCfg();
         if (k === 'theme') host.dataset.theme = cfg.theme;
+        if (k === 'corner') place();
         if (k === 'extraMin' || k === 'noReqMin') for (const q of S.queue) if (q.status === 'pending') q.needMs = needMs(q);
         if (k === 'muteVideo') applyMute();
         render();
