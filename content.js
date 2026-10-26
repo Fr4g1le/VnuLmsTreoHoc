@@ -441,6 +441,8 @@
   // Danh sách bài kiểm tra theo thứ tự mục lục được lưu lại theo lớp (đọc loại của từng mục tốn nhiều lượt gọi API);
   // trạng thái đạt thì lấy mới mỗi lần từ tiến trình học, cộng với các bài đã thấy "Đạt" trên trang.
   const LS_TESTS = 'vnuTreoTests', LS_PASSED = 'vnuTreoTestPassed', SS_ROWS = 'vnuTreoTestRows';
+  // Bản trước 3.9 có thể đã nhớ nhầm (đọc bảng Kết quả của bài trước): xoá một lần
+  if (readJSON('vnuTreoTestPassedV', 0) < 2) { writeJSON(LS_PASSED, {}); writeJSON('vnuTreoTestPassedV', 2); }
   const T = { busy: false };
 
   async function loadTests(classId) {
@@ -502,11 +504,10 @@
       // Mở lần lượt từng bài và đọc bảng Kết quả: đã có dòng "Đạt" thì ghi nhớ và mở bài sau
       for (const [i, next] of order.slice(0, 40).entries()) {
         quizStatus(`${reason || ''}Đang kiểm tra bài ${i + 1}: ${next.title}`, true);
+        const before = testResults();
+        const prevRows = new Set(before ? before.rows : []);
         if (!(await openItem(next))) return quizStatus('Không mở được bài: ' + next.title + '. Hãy mở mục lục rồi bấm lại.', true);
-        let r = null;
-        for (let k = 0; k < 8 && !(r = testResults()); k++) await sleep(500);
-        // Bảng có thể hiện tiêu đề trước rồi mới tải các dòng: còn trống thì chờ thêm một chút
-        if (r && !r.total) { await sleep(1500); r = testResults() || r; }
+        const r = await stableResults(next, prevRows);
         if (r && r.pass > 0) {
           log('Bài này đã có lần Đạt, bỏ qua: ' + next.title);
           const passed = readJSON(LS_PASSED, {});
@@ -526,6 +527,25 @@
     }
   }
 
+  // Vừa chuyển bài thì LMS đổi tiêu đề ngay nhưng bảng Kết quả vẫn là của bài trước một lúc rồi mới tải lại.
+  // Nên chờ ít nhất 2 giây và đọc đến khi bảng không đổi qua 3 lần đọc liên tiếp (tối đa khoảng 10 giây).
+  // prevRows: các dòng của bảng trước khi chuyển bài; còn thấy dòng cũ nào thì bảng chưa tải lại, không tính.
+  // Không chắc chắn thì trả null: bài đó được coi là chưa đạt (dừng lại cho bạn xem, không bỏ qua nhầm).
+  async function stableResults(test, prevRows) {
+    await sleep(2000);
+    let last = '', same = 0;
+    for (let k = 0; k < 16; k++) {
+      const r = testResults();
+      const fresh = r && r.head.startsWith(norm(test.title)) && !r.rows.some(row => prevRows.has(row));
+      const sig = fresh ? r.total + '|' + r.pass : '';
+      same = sig && sig === last ? same + 1 : 0;
+      last = sig;
+      if (same >= 2) return r;
+      await sleep(500);
+    }
+    return null;
+  }
+
   // Bảng "Kết quả" của bài kiểm tra: mỗi lần nộp thêm một dòng, cột cuối là "Đạt" / "Không đạt".
   // Nhớ số dòng đã thấy (trong phiên này) để biết khi nào có lần nộp mới.
   function testResults() {
@@ -533,13 +553,16 @@
     const table = view && [...view.querySelectorAll('table')].find(t => /Trạng thái/.test(t.innerText) && /Nộp bài/.test(t.innerText));
     if (!table) return null;
     const rows = [...table.querySelectorAll('tr')].filter(r => r.querySelector('td'));
-    return { head: viewHead(), total: rows.length, pass: rows.filter(r => /^đạt$/i.test(clean(r.cells[r.cells.length - 1].innerText))).length };
+    return { head: viewHead(), rows, total: rows.length, pass: rows.filter(r => /^đạt$/i.test(clean(r.cells[r.cells.length - 1].innerText))).length };
   }
 
   function watchTestPass() {
     if (S.active || T.busy) return;
     const r = testResults();
     if (!r || !r.head) return;
+    // Vừa đổi bài: bảng có thể còn là của bài trước, chờ tiêu đề đứng yên 3 giây
+    if (r.head !== T.head) { T.head = r.head; T.headSince = Date.now(); return; }
+    if (Date.now() - T.headSince < 3000) return;
     let seen = {};
     try { seen = JSON.parse(sessionStorage.getItem(SS_ROWS)) || {}; } catch (e) {}
     const before = seen[r.head];
