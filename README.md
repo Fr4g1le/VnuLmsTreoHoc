@@ -27,7 +27,7 @@ Extension cho Chrome / Brave / Edge giúp treo máy học trên [LMS VNU](https:
   - **Nối cặp kéo thả**: nối câu hỏi với câu trả lời, sắp xếp từ thành câu. Điền gợi ý sẽ tự kéo từng mục vào đúng ô.
 - **Sang bài tập chưa đạt:** nút **⏭ Bài tập chưa đạt đầu tiên** mở bài kiểm tra đầu tiên (tính từ đầu mục lục) mà bảng **Kết quả** chưa có dòng **Đạt** (không dựa vào dấu ✓ của mục lục, vì có bài được ✓ mà bảng Kết quả vẫn trống). Lần đầu extension phải mở lần lượt từng bài để đọc bảng nên hơi chậm; bài đã thấy Đạt được nhớ lại. Bật sẵn tuỳ chọn tự chuyển: vừa nộp bài mà kết quả mới là **Đạt** thì tự mở bài chưa đạt đầu tiên; chưa đạt thì ở lại để làm lại. Extension không tự bấm **LÀM BÀI**.
 - **Kiểm tra bản mới:** extension tự hỏi GitHub tối đa 6 tiếng một lần; muốn hỏi ngay thì vào **Cài đặt → ⟳ Kiểm tra bản mới**.
-- **Viết nháp (AI):** ở bài tập nộp bằng bài viết (khung **Bài làm**) hoặc khi bấm **+ THẢO LUẬN** dưới bài học, bấm **📝 Viết nháp** (có thể gõ trước ý bạn muốn viết) để AI viết bản nháp vào khung. Bạn đọc, sửa, rồi tự bấm **Xác nhận nộp bài** / **Lưu lại**; extension không bao giờ tự nộp hay đăng.
+- **Viết nháp (AI):** ở bài tập nộp bằng bài viết (khung **Bài làm**), ở mục **Topic - Thảo luận nhóm** (extension tự mở khung **+ THẢO LUẬN**; câu hỏi nằm trong video nên AI suy ra từ bài của các bạn, rồi viết câu trả lời riêng của bạn, không gửi tên hay mã sinh viên của các bạn cho AI), hoặc khi bấm **+ THẢO LUẬN** dưới bài học, bấm **📝 Viết nháp** (có thể gõ trước ý bạn muốn viết) để AI viết bản nháp vào khung. Bạn đọc, sửa, rồi tự bấm **Xác nhận nộp bài** / **Lưu lại**; extension không bao giờ tự nộp hay đăng.
 
 ## Cách hoạt động
 

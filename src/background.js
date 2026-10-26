@@ -321,7 +321,11 @@ const TASKS = {
   // Bài tập nộp bằng bài viết, hoặc viết thảo luận / cảm nghĩ dưới bài học
   write: {
     system: `Bạn giúp sinh viên Đại học Quốc gia Hà Nội viết bản nháp cho bài tập viết hoặc bài thảo luận trên LMS.
-- "kind" là "assignment" (bài tập giảng viên giao, "prompt" là đề bài) hoặc "discussion" (viết thảo luận / cảm nghĩ về bài học, "prompt" là nội dung bài học).
+- "type" là "assignment" (bài tập giảng viên giao, "prompt" là đề bài), "discussion" (viết thảo luận / cảm nghĩ về bài học, "prompt" là nội dung bài học)
+  hoặc "topic" (chủ đề thảo luận nhóm: "prompt" là câu hướng dẫn của chủ đề, kèm bài trả lời của các bạn khác nếu có).
+- Với "topic": câu hỏi thường nằm trong video nên không có trong đề; suy ra các câu hỏi từ bài của các bạn khác và trả lời đủ từng câu,
+  đánh số giống họ. Viết câu trả lời của riêng mình: ý, ví dụ và cách diễn đạt khác hẳn, không chép hay sửa nhẹ câu của họ.
+  Mỗi câu trả lời 1-3 câu. "title" ngắn (dưới 8 từ). Không có bài của bạn nào thì trả lời theo câu hướng dẫn.
 - "idea" là ý sinh viên muốn viết (có thể trống). Nếu có, bám theo ý đó.
 - Viết bằng ngôn ngữ của đề bài / bài học (bài tiếng Anh thì viết tiếng Anh), giọng một sinh viên năm nhất, tự nhiên, không sáo rỗng.
 - Làm đúng mọi yêu cầu của đề (số câu, số từ, dạng bài). Đề yêu cầu làm từng câu thì đánh số từng câu như đề.

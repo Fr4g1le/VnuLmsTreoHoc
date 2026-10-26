@@ -754,19 +754,44 @@
     return out;
   }
 
+  // Mục "Topic - Thảo luận nhóm": đề chỉ có một câu hướng dẫn (câu hỏi nằm trong video của mục trước), bên dưới là
+  // bài trả lời của các bạn (li có dòng "Đăng bởi"). Gửi cho AI câu hướng dẫn và nội dung các bài đó (bỏ tên, mã sinh viên)
+  // để AI suy ra các câu hỏi. Không có bài nào thì vẫn là mục thảo luận nếu tiêu đề có "Topic"/"Thảo luận".
+  function readTopic() {
+    const view = document.querySelector('app-class-content-view');
+    if (!view) return null;
+    const posts = [...view.querySelectorAll('li.list-group-item')].filter(li => /Đăng bởi/.test(li.innerText));
+    const head = view.innerText.split('\n').find(s => s.trim()) || '';
+    if (!posts.length && !/topic|thảo luận nhóm/i.test(head)) return null;
+    // Đề = nội dung mục, bỏ các bài đăng, nút "+ THẢO LUẬN" và phần chuyển mục / tệp đính kèm
+    const copy = view.cloneNode(true);
+    copy.querySelectorAll('li.list-group-item, .panel-heading').forEach(e => e.remove());
+    const intro = copy.textContent.replace(/\s+/g, ' ').replace(/(Tệp đính kèm|Mục trước)[\s\S]*$/, '').trim();
+    const bodies = posts.slice(0, 8).map(li => li.innerText.split('\n').map(s => s.trim())
+      .filter(s => s && !/^Đăng bởi|^Thảo [lL]uận$|^Phản hồi/.test(s)).join('\n')).filter(Boolean);
+    const addBtn = [...view.querySelectorAll('.panel-heading')].find(e => /THẢO LUẬN/.test(e.innerText));
+    return { addBtn, prompt: (intro + (bodies.length ? '\n\nBài trả lời của các bạn khác (chỉ để biết đề hỏi gì, không chép):\n\n' +
+      bodies.map((b, i) => `--- Bài ${i + 1} ---\n${b}`).join('\n\n') : '')).slice(0, 8000) };
+  }
+
   // Khung viết: hộp thoại "Thêm thảo luận" đang mở, hoặc khung "Bài làm" của bài tập nộp bằng bài viết. Cả hai đều là CKEditor 4.
+  // Ở mục Topic mà hộp thoại chưa mở thì trả về openTopic (nút "+ THẢO LUẬN") để Viết nháp tự mở hộp thoại.
   function readWrite() {
     const C = window.CKEDITOR;
-    if (!C) return null;
+    const topic = readTopic();
+    if (!C) return topic && topic.addBtn ? { kind: 'topic', openTopic: topic.addBtn } : null;
     const editors = Object.values(C.instances);
     const inside = el => editors.find(e => e.container && el.contains(e.container.$));
     const modal = [...document.querySelectorAll('.modal-dialog')].find(d => d.offsetParent && /Thêm thảo luận/.test(d.innerText));
     if (modal && inside(modal)) {
-      const topic = modal.querySelector('input[disabled]');
+      const titleInput = modal.querySelector('input.form-control:not([disabled])');
+      if (topic) return { kind: 'topic', editor: inside(modal), titleInput, prompt: topic.prompt };
+      const name = modal.querySelector('input[disabled]');
       const lesson = document.querySelector('app-class-content-view') || document.querySelector('.class-lesson-container');
-      return { kind: 'discussion', editor: inside(modal), titleInput: modal.querySelector('input.form-control:not([disabled])'),
-        prompt: ((topic && topic.value ? 'Bài học: ' + topic.value + '\n\n' : '') + (lesson ? lesson.innerText : '')).trim().slice(0, 8000) };
+      return { kind: 'discussion', editor: inside(modal), titleInput,
+        prompt: ((name && name.value ? 'Bài học: ' + name.value + '\n\n' : '') + (lesson ? lesson.innerText : '')).trim().slice(0, 8000) };
     }
+    if (topic && topic.addBtn) return { kind: 'topic', openTopic: topic.addBtn };
     const box = document.querySelector('.exercise-teacher-box');
     const info = box && [...box.querySelectorAll('.exercise-content-box')].find(b => !b.querySelector('ck-editor'));
     if (box && info && inside(box)) {
@@ -972,13 +997,19 @@
   const toHtml = text => text.trim().split(/\n\s*\n/).map(p => `<p>${esc(p.trim()).replace(/\n/g, '<br>')}</p>`).join('');
 
   async function writeDraft() {
-    const w = readWrite();
+    let w = readWrite();
+    if (w && w.openTopic) {
+      // Mục Topic: tự mở hộp thoại "Thêm thảo luận" (chỉ mở khung viết, không đăng gì)
+      (w.openTopic.querySelector('a, span, b') || w.openTopic).click();
+      for (let i = 0; i < 10 && (!w || w.openTopic); i++) { await sleep(400); w = readWrite(); }
+      if (!w || w.openTopic) return quizStatus('Không mở được khung "+ THẢO LUẬN". Bấm nút đó rồi bấm lại "Viết nháp".');
+    }
     if (!w) return quizStatus('Mở khung "Bài làm" của bài tập viết, hoặc bấm "+ THẢO LUẬN" dưới bài học, rồi bấm lại.');
     const current = clean(w.editor.document ? w.editor.document.getBody().getText() : w.editor.getData().replace(/<[^>]+>/g, ' '));
     if (current && !window.confirm('Khung viết đang có nội dung. Thay bằng bản nháp AI?')) return;
     const idea = ui ? ui.$('.qidea').value.trim() : '';
     Q.busy = true;
-    quizStatus(w.kind === 'discussion' ? 'AI đang viết nháp bài thảo luận…' : 'AI đang viết nháp bài làm…');
+    quizStatus(w.kind === 'assignment' ? 'AI đang viết nháp bài làm…' : 'AI đang viết nháp bài thảo luận…');
     try {
       const res = await askAI(null, { kind: 'write', type: w.kind, prompt: w.prompt, idea });
       if (!res.ok) throw new Error(res.error);
@@ -989,7 +1020,7 @@
         w.titleInput.dispatchEvent(new Event('input', { bubbles: true }));
       }
       Q.busy = false;
-      quizStatus(`Đã viết nháp${modelNote(res)}. ${res.note || ''} Đọc và sửa theo ý bạn, rồi tự bấm "${w.kind === 'discussion' ? 'Lưu lại' : 'Xác nhận nộp bài'}".`);
+      quizStatus(`Đã viết nháp${modelNote(res)}. ${res.note || ''} Đọc và sửa theo ý bạn, rồi tự bấm "${w.kind === 'assignment' ? 'Xác nhận nộp bài' : 'Lưu lại'}".`);
     } catch (e) {
       Q.busy = false;
       quizStatus('Lỗi: ' + e.message);
@@ -1375,7 +1406,8 @@
     if (!found.length && !w && !Q.busy && !Q.sticky) Q.status = '';
     if ((found.length || w) && Q.sticky && !Q.busy) { Q.status = ''; Q.sticky = false; } // đã vào trang làm bài
     $('.qstatus').textContent = Q.status || (found.length ? `Trang có ${found.join(', ')}.`
-      : w ? (w.kind === 'discussion' ? 'Đang mở khung viết thảo luận.' : 'Trang có khung "Bài làm" để viết.')
+      : w ? (w.kind === 'topic' ? 'Mục thảo luận nhóm: bấm "Viết nháp" để AI trả lời các câu hỏi của chủ đề.'
+        : w.kind === 'discussion' ? 'Đang mở khung viết thảo luận.' : 'Trang có khung "Bài làm" để viết.')
       : 'Mở một bài làm (bấm "LÀM BÀI"), bài tập viết, hoặc "+ THẢO LUẬN" dưới bài học để dùng.');
     $('.qsuggest').disabled = Q.busy || !found.length;
     $('.qfill').disabled = Q.busy || !found.length;
