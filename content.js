@@ -156,7 +156,7 @@
     if (/\.(pdf|docx?|pptx?|xlsx?)$/.test(f)) return 'pdf';
     return 'other';
   }
-  const dayMonth = t => new Date(t).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+  const dayMonth = t => { const d = new Date(t); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`; };
   const lockReason = l => (l.opensAt > Date.now() ? `mở từ ${dayMonth(l.opensAt)}`
     : l.closesAt && l.closesAt < Date.now() ? `đã hết hạn ${dayMonth(l.closesAt)}` : '');
   const needMs = l => 60000 * (l.mincore > 0 ? Math.max(0, l.mincore - l.learnTime) + cfg.extraMin : cfg.noReqMin);

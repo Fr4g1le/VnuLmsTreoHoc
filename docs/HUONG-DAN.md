@@ -24,7 +24,7 @@ Mất khoảng **5 phút**. Làm lần lượt từ trên xuống, mỗi bước
 
 ### Bước 2. Giải nén
 
-Mở thư mục **Downloads**, **chuột phải** vào file ZIP vừa tải (`VnuLmsTreoHoc-vX.Y.zip` hoặc `VnuLmsTreoHoc-master.zip`) → **Extract All…** (Giải nén tất cả) → **Extract**. Ở Bước 4, chọn thư mục có file `manifest.json` bên trong.
+Mở thư mục **Downloads**, **chuột phải** vào file ZIP vừa tải (`VnuLmsTreoHoc-vX.Y.zip` hoặc `VnuLmsTreoHoc-master.zip`; bên trong là thư mục `VnuLmsTreoHoc`) → **Extract All…** (Giải nén tất cả) → **Extract**. Ở Bước 4, chọn thư mục có file `manifest.json` bên trong.
 
 Nên chuyển thư mục vừa giải nén ra chỗ cố định (ví dụ `D:\VnuLmsTreoHoc`) và **đừng xoá nó**, vì trình duyệt chạy extension trực tiếp từ thư mục này.
 
@@ -129,10 +129,14 @@ AI có thể sai, nhất là câu hỏi kiểu "đáp án nào SAI". Gợi ý đ
 
 Khi có bản mới, biểu tượng extension hiện chữ **NEW**, nút "Treo học" có dấu **⬆**, và trong bảng có dòng xanh **"Có bản mới vX.Y"** kèm nút **Tải bản mới** (extension tự kiểm tra GitHub, tối đa 6 tiếng một lần).
 
-1. Bấm **Tải bản mới** (hoặc tải ZIP như **Bước 1**), giải nén **đè lên** thư mục cũ.
+1. Bấm **Tải bản mới** (hoặc tải ZIP như **Bước 1**). Trong zip luôn là thư mục **`VnuLmsTreoHoc`**: giải nén **đè lên** thư mục cũ.
 2. Vào `brave://extensions` (hoặc `chrome://extensions`), bấm **⟳** ở thẻ "VNU LMS - Treo học".
 
-Cài đặt và khoá AI đã lưu vẫn được giữ.
+Từ **v2.9**, extension có mã ID cố định (`phjfhfofmfgcdellcpndceejfkkkjjhj`) nên **khoá AI và cài đặt không bị mất** khi cập nhật, kể cả khi giải nén ra thư mục khác.
+
+> **Lên v2.9 từ bản cũ (làm một lần):** ở trang extensions, bấm **Remove** (Xoá) **tất cả** thẻ "VNU LMS - Treo học" cũ, rồi **Load unpacked** thư mục `VnuLmsTreoHoc` của bản v2.9 và nhập lại khoá AI **lần cuối**. Kiểm tra mã ID trên thẻ phải là `phjfhfofmfgcdellcpndceejfkkkjjhj`.
+
+Extension cài từ thư mục **không tự cập nhật được** (giới hạn của trình duyệt), nên vẫn cần làm 2 bước trên mỗi khi có bản mới.
 
 ## Gặp lỗi?
 

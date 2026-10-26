@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VNU LMS - Treo học
 // @namespace    vnu-lms-keepalive
-// @version      2.8
+// @version      2.9
 // @description  Tự học lần lượt các mục trên LMS VNU cho đến khi đạt yêu cầu, giữ video chạy khi treo máy.
 // @match        https://lms.vnu.edu.vn/*
 // @run-at       document-start
@@ -166,6 +166,9 @@
     if (/\.(pdf|docx?|pptx?|xlsx?)$/.test(f)) return 'pdf';
     return 'other';
   }
+  const dayMonth = t => { const d = new Date(t); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`; };
+  const lockReason = l => (l.opensAt > Date.now() ? `mở từ ${dayMonth(l.opensAt)}`
+    : l.closesAt && l.closesAt < Date.now() ? `đã hết hạn ${dayMonth(l.closesAt)}` : '');
   const needMs = l => 60000 * (l.mincore > 0 ? Math.max(0, l.mincore - l.learnTime) + cfg.extraMin : cfg.noReqMin);
 
   async function scan() {
@@ -204,8 +207,16 @@
         l.required = !!d.isRequired;
         l.learnTime = (learning[l.id] && learning[l.id].learnTime) || 0;
         if (l.kind === 'test' || !cfg.kinds[l.kind] || (cfg.onlyRequired && !l.required)) continue;
-        Object.assign(l, { status: 'pending', retries: 0, needMs: needMs(l) });
+        // Mục chưa tới ngày mở (hoặc đã hết hạn) thì LMS không cho xem: liệt kê với 🔒 nhưng không chạy
+        l.opensAt = d.startDate ? new Date(d.startDate).getTime() : 0;
+        l.closesAt = d.endDate ? new Date(d.endDate).getTime() : 0;
+        Object.assign(l, { status: lockReason(l) ? 'locked' : 'pending', retries: 0, needMs: needMs(l) });
         queue.push(l);
+      }
+      const locked = queue.filter(q => q.status === 'locked');
+      if (locked.length) {
+        const next = Math.min(...locked.map(q => q.opensAt).filter(t => t > Date.now()));
+        log(`Bỏ qua ${locked.length} mục chưa mở hoặc đã hết hạn` + (isFinite(next) ? ` (mục sớm nhất mở lúc ${new Date(next).toLocaleString('vi-VN')}).` : '.'));
       }
 
       // Mục đã xong, an toàn để mở (không phải bài kiểm tra): mở nó để rời mục cuối, giúp server lưu thời gian.
@@ -217,7 +228,7 @@
 
       S.course = { classId, folders, total: leaves.length, done: leaves.filter(done).length };
       S.queue = queue;
-      log(`Quét xong: ${queue.length} mục cần học, ${S.course.done}/${leaves.length} mục đã hoàn thành.`);
+      log(`Quét xong: ${queue.filter(q => q.status === 'pending').length} mục cần học, ${S.course.done}/${leaves.length} mục đã hoàn thành.`);
     } finally {
       S.phase = '';
       render();
@@ -391,6 +402,11 @@
           continue;
         }
         S.narrow = false;
+        // Chạy qua đêm: mục vừa tới ngày mở thì đưa vào, mục vừa hết hạn thì khoá lại
+        for (const q of S.queue) {
+          if (q.status === 'locked' && !lockReason(q)) q.status = 'pending';
+          else if (q.status === 'pending' && lockReason(q)) q.status = 'locked';
+        }
         const item = S.queue.find(q => q.status === 'pending');
         const target = item || (toCheck && S.parking);
         if (!target) break;
@@ -572,6 +588,7 @@
     li.holding { font-weight: 600; color: #1f6feb; }
     li.done { color: #1a7f37; }
     li.fail, li.error { color: #cf222e; }
+    li.locked { color: #8c959f; }
     pre { white-space: pre-wrap; font-size: 11px; margin: 6px 0 0; max-height: 160px; overflow: auto; }
     hr { border: 0; border-top: 1px solid #eaeef2; }
     .qrow { display: flex; gap: 6px; margin: 8px 0; }
@@ -592,7 +609,7 @@
     .note code { background: rgba(175,184,193,.3); border-radius: 4px; padding: 0 4px; font-family: Consolas, monospace; }
     .note button { margin-top: 8px; padding: 4px 10px; border-radius: 6px; border: 1px solid #d0d7de; background: #fff; cursor: pointer; font-size: 12px; }
   `;
-  const ICON = { pending: '○', holding: '▶', checking: '…', done: '✓', fail: '✗', error: '⚠' };
+  const ICON = { pending: '○', holding: '▶', checking: '…', done: '✓', fail: '✗', error: '⚠', locked: '🔒' };
 
   let ui = null;
   function buildUI() {
@@ -737,7 +754,7 @@
       $('.qcount').textContent = S.queue.length ? `(${left.length} mục, ~${Math.ceil(totalMs / 60000)} phút)` : '';
       $('.queue').innerHTML = S.queue.length
         ? S.queue.map(q => `<li class="${q.status}">${ICON[q.status] || ''} ${esc(q.title)}
-            <small>· ${esc(KIND_LABEL[q.kind])} · ${Math.ceil(q.needMs / 60000)} phút</small></li>`).join('')
+            <small>· ${esc(KIND_LABEL[q.kind])} · ${q.status === 'locked' ? esc(lockReason(q)) : Math.ceil(q.needMs / 60000) + ' phút'}</small></li>`).join('')
         : '<div class="muted">Chưa có. Bấm "Quét lại" hoặc "Bắt đầu tự học".</div>';
     }
     const fsig = c ? c.folders.map(f => f.id).join() + cfg.skipFolders.join() : '';
