@@ -72,9 +72,11 @@ const GEMINI_IDLE = 150000;
 
 // req = { system, parts, schema }: parts là nội dung gửi lên (chữ, có thể kèm audio).
 // Dùng bản trả về dạng luồng (SSE): biết ngay model đã bắt đầu trả lời, và báo tiến độ trong lúc chờ.
-async function callGemini(model, key, req, progress) {
+// signal: huỷ từ bên ngoài (đã có model khác trả lời xong). onStream: gọi khi nhận được chữ đầu tiên của câu trả lời.
+async function callGemini(model, key, req, progress, signal, onStream = () => {}) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
   const abort = new AbortController();
+  if (signal) signal.addEventListener('abort', () => abort.abort());
   let timer;
   const arm = () => { clearTimeout(timer); timer = setTimeout(() => abort.abort(), GEMINI_IDLE); };
   arm();
@@ -106,10 +108,10 @@ async function callGemini(model, key, req, progress) {
       throw new GeminiError(`Lỗi từ Gemini (${res.status}): ${msg}`, { status: res.status });
     }
     arm();
-    progress(`${model} đang trả lời…`);
+    progress(`${model} đang xử lý…`);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
-    let buf = '', text = '';
+    let buf = '', text = '', started = false;
     const handle = line => {
       if (!line.startsWith('data:')) return;
       const ev = JSON.parse(line.slice(5));
@@ -126,6 +128,7 @@ async function callGemini(model, key, req, progress) {
         const lines = buf.split(/\r?\n/);
         buf = lines.pop();
         lines.forEach(handle);
+        if (text && !started) { started = true; onStream(model); }
         if (text) progress(`${model} đang trả lời… (${text.length} ký tự)`);
       }
       handle(buf);
@@ -144,28 +147,70 @@ async function callGemini(model, key, req, progress) {
 const suggestGemini = (questions, progress) =>
   askGemini({ system: SYSTEM, parts: [{ text: JSON.stringify({ questions }) }], schema: geminiSchema(SCHEMA) }, progress);
 
-// Thử model đang chọn trước (quá tải thì thử lại sau 3 giây), không được thì lần lượt chuyển sang model dự phòng.
+// Một model: quá tải thì thử lại một lần sau 3 giây.
+async function callGeminiRetry(model, key, req, progress, signal, onStream) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      progress(`Đang gửi cho ${model}${attempt ? ' (thử lại)' : ''}…`);
+      return await callGemini(model, key, req, progress, signal, onStream);
+    } catch (e) {
+      if (signal && signal.aborted) throw e;
+      if (attempt === 0 && e instanceof GeminiError && e.retry) { progress(e.message); await wait(3000); continue; }
+      throw e;
+    }
+  }
+}
+
+// Bao lâu chưa có model nào bắt đầu trả lời thì gọi thêm model kế tiếp (chế độ Nhanh). Bài có audio cần nghe lâu hơn.
+const HEDGE_TEXT = 10000, HEDGE_AUDIO = 30000;
+
+// Chế độ Nhanh (mặc định): gọi model đang chọn; quá HEDGE mà chưa có chữ nào thì gọi thêm model dự phòng kế tiếp,
+// model nào báo lỗi thì gọi ngay model khác; lấy kết quả của model trả lời xong đầu tiên và huỷ các model còn lại.
+// Chế độ Chính xác: lần lượt từng model, chỉ chuyển khi model trước lỗi.
 async function askGemini(req, progress = () => {}) {
-  const { geminiKey, geminiModel } = await chrome.storage.local.get(['geminiKey', 'geminiModel']);
+  const { geminiKey, geminiModel, geminiSpeed } = await chrome.storage.local.get(['geminiKey', 'geminiModel', 'geminiSpeed']);
   if (!geminiKey) throw new GeminiError('Chưa có khoá Gemini. Bấm "⚙ Khoá API" để nhập.');
   const chosen = (geminiModel || DEFAULT_GEMINI_MODEL).trim();
   const models = [chosen, ...GEMINI_FALLBACKS.filter(m => m !== chosen)];
-  const tried = [];
-  for (const model of models) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        progress(`Đang gửi cho ${model}${attempt ? ' (thử lại)' : ''}…`);
-        return { ...(await callGemini(model, geminiKey, req, progress)), model };
-      } catch (e) {
-        if (!(e instanceof GeminiError) || (!e.retry && !e.nextModel)) throw e;
-        progress(e.message);
-        if (attempt === 0 && e.retry) { await wait(3000); continue; }
-        tried.push(e.message);
-        break;
-      }
-    }
-  }
-  throw new GeminiError('Tất cả model Gemini đều đang bận hoặc hết lượt, thử lại sau ít phút. (' + tried.join(' ') + ')');
+  const fast = geminiSpeed !== 'accurate';
+  const hedge = req.parts.some(p => p.inlineData && /^audio\//.test(p.inlineData.mimeType)) ? HEDGE_AUDIO : HEDGE_TEXT;
+  const usable = e => e instanceof GeminiError && (e.retry || e.nextModel);
+
+  return new Promise((resolve, reject) => {
+    const running = new Map();
+    const tried = [];
+    let next = 0, settled = false, streaming = false, timer;
+    const finish = (err, result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      for (const ac of running.values()) ac.abort();
+      if (err) reject(err); else resolve(result);
+    };
+    const armHedge = () => {
+      clearTimeout(timer);
+      if (fast && next < models.length) timer = setTimeout(() => { if (!streaming) launch(); }, hedge);
+    };
+    const launch = () => {
+      if (settled || next >= models.length) return;
+      const model = models[next++];
+      const ac = new AbortController();
+      running.set(model, ac);
+      if (running.size > 1) progress(`Model trước chậm, gọi thêm ${model}…`);
+      armHedge();
+      callGeminiRetry(model, geminiKey, req, progress, ac.signal, () => { streaming = true; clearTimeout(timer); })
+        .then(result => finish(null, { ...result, model }), e => {
+          running.delete(model);
+          if (settled) return;
+          if (!usable(e)) return finish(e);
+          tried.push(e.message);
+          progress(e.message);
+          if (next < models.length) launch();
+          else if (!running.size) finish(new GeminiError('Tất cả model Gemini đều đang bận hoặc hết lượt, thử lại sau ít phút. (' + tried.join(' ') + ')'));
+        });
+    };
+    launch();
+  });
 }
 
 // ---------- Claude ----------

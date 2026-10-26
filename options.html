@@ -63,6 +63,12 @@
       <option value="gemini-2.5-flash">
     </datalist>
     <p class="muted">Nếu báo hết lượt hoặc không có model, đổi sang model khác (xem model nào miễn phí ở aistudio.google.com/rate-limit).</p>
+    <label for="geminiSpeed">Khi model chậm</label>
+    <select id="geminiSpeed">
+      <option value="fast">Nhanh: sau 10 giây (bài nghe 30 giây) chưa trả lời thì gọi thêm model dự phòng</option>
+      <option value="accurate">Chính xác: chờ model đã chọn, chỉ đổi model khi bị lỗi</option>
+    </select>
+    <p class="muted">Chế độ Nhanh có thể tốn thêm vài lượt miễn phí khi model đầu chậm; model dự phòng (bản lite) có thể kém chính xác hơn.</p>
   </div>
 
   <div class="box" id="claudeBox">

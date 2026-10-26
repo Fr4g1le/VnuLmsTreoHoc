@@ -1,5 +1,5 @@
 const $ = id => document.getElementById(id);
-const FIELDS = ['provider', 'apiKey', 'model', 'geminiKey', 'geminiModel'];
+const FIELDS = ['provider', 'apiKey', 'model', 'geminiKey', 'geminiModel', 'geminiSpeed'];
 
 function showBox() {
   $('geminiBox').hidden = $('provider').value !== 'gemini';

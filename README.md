@@ -79,6 +79,8 @@ Lưu ý:
 
 Bài nghe điền chỗ trống làm giống hệt: bấm **🤖 Gợi ý đáp án** (AI nghe audio mất khoảng 30-60 giây), **✍ Điền gợi ý**, rồi bấm **Lưu câu trả lời** ở từng câu trước khi nộp.
 
+**Gemini chậm?** Mặc định extension ở chế độ **Nhanh**: model đang chọn chưa trả lời sau 10 giây (bài nghe 30 giây) thì gọi thêm model dự phòng (3.6-flash, 3.5-flash-lite…) và lấy kết quả của model trả lời xong trước. Muốn luôn chờ model đã chọn thì vào **⚙ Khoá API → Khi model chậm → Chính xác**.
+
 AI có thể sai, nhất là với câu hỏi lừa ("đáp án nào SAI") hoặc kiến thức riêng của giáo trình, nên hãy đọc lại trước khi nộp. Tính năng AI chỉ có ở bản extension, không có ở bản Tampermonkey.
 
 ## Các file
