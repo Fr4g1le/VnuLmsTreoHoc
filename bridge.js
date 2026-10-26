@@ -6,8 +6,8 @@ chrome.runtime.onMessage.addListener(msg => {
 window.addEventListener('message', e => {
   if (e.source !== window || !e.data) return;
   const { vnuTreo, id, questions, task } = e.data;
-  if (vnuTreo === 'ai-suggest' || vnuTreo === 'ai-fill') {
-    chrome.runtime.sendMessage(vnuTreo === 'ai-fill' ? { type: 'ai-fill', task } : { type: 'ai-suggest', questions })
+  if (vnuTreo === 'ai-suggest' || vnuTreo === 'ai-task') {
+    chrome.runtime.sendMessage(vnuTreo === 'ai-task' ? { type: 'ai-task', task } : { type: 'ai-suggest', questions })
       .then(res => window.postMessage({ vnuTreo: 'ai-result', id, ...res }, location.origin))
       .catch(err => window.postMessage({ vnuTreo: 'ai-result', id, ok: false, error: String(err.message || err) }, location.origin));
   }

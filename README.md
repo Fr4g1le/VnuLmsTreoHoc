@@ -21,8 +21,11 @@ Extension cho Chrome / Brave / Edge giúp treo máy học trên [LMS VNU](https:
 - **Tắt tiếng nhanh** bằng một nút, để làm việc khác trong lúc treo.
 - **Bảng điều khiển:** chọn loại mục (video, PDF, bài đọc…), chọn bài học muốn chạy, xem danh sách, thời gian còn lại và nhật ký.
 - Chế độ tự học không bao giờ mở bài kiểm tra / trắc nghiệm.
-- **Trợ lý trắc nghiệm (AI):** khi bạn tự mở một bài trắc nghiệm, bấm **🤖 Gợi ý đáp án** để Claude đọc câu hỏi, đánh dấu đáp án gợi ý kèm giải thích ngắn. **✍ Điền gợi ý** chọn sẵn các đáp án đó; **không bao giờ tự nộp bài**. Gợi ý được lưu lại, lần sau gặp câu giống hệt sẽ dùng luôn mà không gọi AI.
-- **Bài nghe / điền chỗ trống:** với bài có file audio và các ô cần điền (1.1, 1.2…), cùng nút **🤖 Gợi ý đáp án** sẽ gửi audio kèm đề cho Gemini nghe rồi gợi ý từng ô (viết IN HOA nếu đề yêu cầu); **✍ Điền gợi ý** điền vào các ô. Bạn tự bấm **Lưu câu trả lời** ở từng câu. Cần khoá Gemini vì Claude không nghe được audio.
+- **Trợ lý làm bài (AI):** khi bạn tự mở một bài làm, bấm **🤖 Gợi ý đáp án** để AI đọc câu hỏi và hiện đáp án gợi ý kèm giải thích ngắn dưới mỗi câu; **✍ Điền gợi ý** điền sẵn các đáp án đó; **không bao giờ tự nộp bài**. Gợi ý được lưu lại, lần sau gặp câu giống hệt sẽ dùng luôn mà không gọi AI. Hỗ trợ:
+  - **Trắc nghiệm**, kể cả **đọc hiểu** (đoạn văn nằm trong đề).
+  - **Điền ô chữ**: điền chỗ trống, viết lại câu. Bài **nghe** có file audio thì AI nghe audio rồi gợi ý từng ô (viết IN HOA nếu đề yêu cầu). Bạn tự bấm **Lưu câu trả lời** ở từng câu. Bài nghe cần khoá Gemini vì Claude không nghe được audio.
+  - **Nối cặp kéo thả**: nối câu hỏi với câu trả lời, sắp xếp từ thành câu. Điền gợi ý sẽ tự kéo từng mục vào đúng ô.
+- **Viết nháp (AI):** ở bài tập nộp bằng bài viết (khung **Bài làm**) hoặc khi bấm **+ THẢO LUẬN** dưới bài học, bấm **📝 Viết nháp** (có thể gõ trước ý bạn muốn viết) để AI viết bản nháp vào khung. Bạn đọc, sửa, rồi tự bấm **Xác nhận nộp bài** / **Lưu lại**; extension không bao giờ tự nộp hay đăng.
 
 ## Cách hoạt động
 

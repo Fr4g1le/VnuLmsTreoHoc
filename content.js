@@ -434,10 +434,11 @@
     log('Đã dừng.');
   }
 
-  // ---------- 3. Trợ lý trắc nghiệm (AI) ----------
-  // Trang làm bài: mỗi câu là .question-item, đề bài ở .question-title, đáp án là radio/checkbox trong
-  // .question-content label. Gợi ý được lưu theo nội dung câu hỏi (LS_AI) để lần sau gặp lại không phải hỏi AI.
-  // Chỉ gợi ý và điền khi bạn bấm; không bao giờ tự nộp bài.
+  // ---------- 3. Trợ lý làm bài (AI) ----------
+  // Trang làm bài: mỗi câu là .question-item, đề bài ở .question-title. Có các dạng: trắc nghiệm (radio/checkbox trong
+  // .question-content label), điền ô chữ (có thể kèm audio), nối cặp kéo thả; ngoài ra bài tập viết và thảo luận dùng CKEditor.
+  // Gợi ý được lưu theo nội dung câu hỏi (LS_AI) để lần sau gặp lại không phải hỏi AI.
+  // Chỉ gợi ý và điền khi bạn bấm; không bao giờ tự nộp bài hay đăng bài.
   const LS_AI = 'vnuTreoAi';
   const Q = { busy: false, status: '' };
   const clean = s => (s || '').replace(/\s+/g, ' ').trim();
@@ -500,7 +501,7 @@
   const askAI = (questions, task) => new Promise(resolve => {
     const id = ++aiSeq;
     aiWait[id] = resolve;
-    window.postMessage(task ? { vnuTreo: 'ai-fill', id, task } : { vnuTreo: 'ai-suggest', id, questions }, location.origin);
+    window.postMessage(task ? { vnuTreo: 'ai-task', id, task } : { vnuTreo: 'ai-suggest', id, questions }, location.origin);
     setTimeout(() => {
       if (!aiWait[id]) return;
       delete aiWait[id];
@@ -529,87 +530,186 @@
     note.textContent = `🤖 Gợi ý: ${letters || '?'} (độ tin cậy ${s.confidence}) — ${s.why}`;
   }
 
-  function annotateBlank(b, s) {
-    let note = b.item.querySelector('.vnu-ai-note');
+  // Kéo thả nối cặp: bên trái là các mục để kéo, bên phải là các ô đích (thẻ có tiêu đề).
+  // Dùng cho cả bài nối câu hỏi với câu trả lời lẫn bài sắp xếp từ (mục là số vị trí, ô đích là từ).
+  function readMatch() {
+    const out = [];
+    let ctx = '';
+    for (const item of document.querySelectorAll('.question-item')) {
+      const m = item.querySelector('app-client-question-mtc');
+      if (!m) {
+        const hc = item.querySelector('app-client-question-hc .question-title');
+        if (hc) ctx = hc.innerText.trim();
+        continue;
+      }
+      if (!item.offsetParent) continue;
+      const cards = [...m.querySelectorAll('.card[droppable]')];
+      const items = [...m.querySelectorAll('li[draggable]')].map(li => clean(li.innerText));
+      if (!cards.length || !items.length) continue;
+      const targets = cards.map(c => clean((c.querySelector('.card-header') || c).innerText));
+      const title = clean(m.querySelector('.question-title') && m.querySelector('.question-title').innerText);
+      const num = m.querySelector('.question-num');
+      const n = ((num && num.innerText.match(/\d+\s*\.\s*\d+|\d+/)) || [String(out.length + 1)])[0].replace(/\s+/g, '');
+      out.push({ item, m, cards, n, ctx, title, items, targets,
+        key: 'mtc||' + norm(ctx + title) + '||' + items.map(norm).sort().join('|') + '||' + targets.map(norm).sort().join('|') });
+    }
+    return out;
+  }
+
+  // Khung viết: hộp thoại "Thêm thảo luận" đang mở, hoặc khung "Bài làm" của bài tập nộp bằng bài viết. Cả hai đều là CKEditor 4.
+  function readWrite() {
+    const C = window.CKEDITOR;
+    if (!C) return null;
+    const editors = Object.values(C.instances);
+    const inside = el => editors.find(e => e.container && el.contains(e.container.$));
+    const modal = [...document.querySelectorAll('.modal-dialog')].find(d => d.offsetParent && /Thêm thảo luận/.test(d.innerText));
+    if (modal && inside(modal)) {
+      const topic = modal.querySelector('input[disabled]');
+      const lesson = document.querySelector('app-class-content-view') || document.querySelector('.class-lesson-container');
+      return { kind: 'discussion', editor: inside(modal), titleInput: modal.querySelector('input.form-control:not([disabled])'),
+        prompt: ((topic && topic.value ? 'Bài học: ' + topic.value + '\n\n' : '') + (lesson ? lesson.innerText : '')).trim().slice(0, 8000) };
+    }
+    const box = document.querySelector('.exercise-teacher-box');
+    const info = box && [...box.querySelectorAll('.exercise-content-box')].find(b => !b.querySelector('ck-editor'));
+    if (box && info && inside(box)) {
+      return { kind: 'assignment', editor: inside(box), prompt: info.innerText.replace(/^\s*Thông tin bài tập/, '').trim().slice(0, 8000) };
+    }
+    return null;
+  }
+
+  function aiNote(host, after, text) {
+    let note = host.querySelector('.vnu-ai-note');
     if (!note) {
       note = document.createElement('div');
       note.className = 'vnu-ai-note';
-      note.style.cssText = 'margin:8px 0 0;padding:6px 10px;border-left:3px solid #5b46b0;border-radius:0 6px 6px 0;' +
+      note.style.cssText = 'clear:both;margin:8px 0 0;padding:6px 10px;border-left:3px solid #5b46b0;border-radius:0 6px 6px 0;' +
         'background:#eeebfa;color:#1a2233;font-size:13px;';
-      b.input.closest('p, div').after(note);
+      after.after(note);
     }
-    note.textContent = `🤖 Gợi ý: ${s.text || '?'} (độ tin cậy ${s.confidence}) — ${s.why}`;
+    note.textContent = text;
   }
 
-  async function suggestFill(groups) {
-    const bank = readJSON(LS_AI, {});
-    const total = countBlanks(groups);
-    Q.busy = true;
-    let usedModel = '';
-    try {
-      for (const g of groups) {
-        const todo = g.blanks.filter(b => !bank[b.key]);
-        if (!todo.length) continue;
-        quizStatus(g.audio ? 'Đang tải file audio của bài nghe…' : `Đang hỏi AI ${todo.length} ô…`);
-        const audio = await audioPayload(g.audio);
-        if (audio) quizStatus(`AI đang nghe audio và điền ${todo.length} ô (có thể mất 30-60 giây)…`);
+  const modelNote = res => (res.model ? ` (dùng ${res.model})` : '');
+
+  async function suggestChoice(qs, bank) {
+    const todo = qs.filter(q => !bank[q.key]);
+    let used = '';
+    if (todo.length) {
+      quizStatus(`Đang hỏi AI ${todo.length} câu trắc nghiệm (model bận thì tự thử lại / đổi model)…`);
+      const res = await askAI(todo.map(q => ({ n: q.n, question: q.title, answers: q.answers, multi: q.multi })));
+      if (!res.ok) throw new Error(res.error);
+      used = modelNote(res);
+      for (const a of res.answers) {
+        const q = todo.find(x => x.n === String(a.n));
+        if (!q) continue;
+        bank[q.key] = { picks: a.choices.filter(i => q.answers[i] != null).map(i => q.answers[i]), why: a.why, confidence: a.confidence };
+      }
+      writeJSON(LS_AI, bank);
+    }
+    let shown = 0;
+    for (const q of qs) if (bank[q.key]) { annotate(q, bank[q.key]); shown++; }
+    return `${shown}/${qs.length} câu trắc nghiệm${used}`;
+  }
+
+  async function suggestFill(groups, bank) {
+    let used = '';
+    for (const g of groups) {
+      const todo = g.blanks.filter(b => !bank[b.key]);
+      if (!todo.length) continue;
+      quizStatus(g.audio ? 'Đang tải file audio của bài nghe…' : `Đang hỏi AI ${todo.length} ô…`);
+      const audio = await audioPayload(g.audio);
+      if (audio) quizStatus(`AI đang nghe audio và điền ${todo.length} ô (có thể mất 30-60 giây)…`);
+      const res = await askAI(null, {
+        kind: 'fill', context: g.text, caps: wantsCaps(g.text), audio,
+        blanks: todo.map(b => ({ n: b.n, label: b.label })),
+      });
+      if (!res.ok) throw new Error(res.error);
+      used = modelNote(res);
+      for (const a of res.answers) {
+        const b = todo.find(x => x.n === String(a.n));
+        const text = String(a.text || '').trim();
+        if (b) bank[b.key] = { text: wantsCaps(g.text) ? text.toUpperCase() : text, why: a.why, confidence: a.confidence };
+      }
+      writeJSON(LS_AI, bank);
+    }
+    let shown = 0;
+    for (const g of groups) for (const b of g.blanks) {
+      const s = bank[b.key];
+      if (!s) continue;
+      aiNote(b.item, b.input.closest('p, div'), `🤖 Gợi ý: ${s.text || '?'} (độ tin cậy ${s.confidence}) — ${s.why}`);
+      shown++;
+    }
+    return `${shown}/${countBlanks(groups)} ô${used}`;
+  }
+
+  async function suggestMatch(ms, bank) {
+    const todo = ms.filter(q => !bank[q.key]);
+    let used = '';
+    if (todo.length) {
+      quizStatus(`Đang hỏi AI ${todo.length} câu nối cặp…`);
+      // Các câu cùng đề chung gửi một lần
+      for (const ctx of [...new Set(todo.map(q => q.ctx))]) {
+        const part = todo.filter(q => q.ctx === ctx);
         const res = await askAI(null, {
-          context: g.text, caps: wantsCaps(g.text), audio,
-          blanks: todo.map(b => ({ n: b.n, label: b.label })),
+          kind: 'match', context: ctx,
+          questions: part.map(q => ({ n: q.n, title: q.title, items: q.items, targets: q.targets })),
         });
         if (!res.ok) throw new Error(res.error);
-        usedModel = res.model ? ` (dùng ${res.model})` : '';
+        used = modelNote(res);
         for (const a of res.answers) {
-          const b = todo.find(x => x.n === String(a.n));
-          const text = String(a.text || '').trim();
-          if (b) bank[b.key] = { text: wantsCaps(g.text) ? text.toUpperCase() : text, why: a.why, confidence: a.confidence };
+          const q = part.find(x => x.n === String(a.n));
+          if (!q) continue;
+          const pairs = a.pairs.filter(p => q.items[p.item] != null && q.targets[p.target] != null)
+            .map(p => ({ item: q.items[p.item], target: q.targets[p.target] }));
+          bank[q.key] = { pairs, why: a.why, confidence: a.confidence };
         }
         writeJSON(LS_AI, bank);
       }
-      let shown = 0;
-      for (const g of groups) for (const b of g.blanks) if (bank[b.key]) { annotateBlank(b, bank[b.key]); shown++; }
-      Q.busy = false;
-      quizStatus(`Đã gợi ý ${shown}/${total} ô${usedModel}. Xem lại, rồi bấm "Điền gợi ý" hoặc tự gõ.`);
-    } catch (e) {
-      Q.busy = false;
-      quizStatus('Lỗi: ' + e.message);
     }
+    let shown = 0;
+    for (const q of ms) {
+      const s = bank[q.key];
+      if (!s) continue;
+      const cut = t => (t.length > 40 ? t.slice(0, 40) + '…' : t);
+      aiNote(q.m, q.m.querySelector('.question-content'),
+        `🤖 Gợi ý (độ tin cậy ${s.confidence}): ${s.pairs.map(p => `${cut(p.item)} → ${cut(p.target)}`).join(' · ')} — ${s.why}`);
+      shown++;
+    }
+    return `${shown}/${ms.length} câu nối cặp${used}`;
   }
 
   async function suggestQuiz() {
-    const qs = readQuiz();
-    const groups = readFill();
-    if (!qs.length && countBlanks(groups)) return suggestFill(groups);
-    if (!qs.length) return quizStatus('Không thấy câu hỏi trắc nghiệm trên trang.');
+    const qs = readQuiz(), groups = readFill(), ms = readMatch();
+    if (!qs.length && !countBlanks(groups) && !ms.length) return quizStatus('Không thấy câu hỏi trên trang.');
     const bank = readJSON(LS_AI, {});
-    const todo = qs.filter(q => !bank[q.key]);
+    const done = [];
     Q.busy = true;
-    quizStatus(todo.length ? `Đang hỏi AI ${todo.length} câu (model bận thì tự thử lại / đổi model)…` : 'Dùng gợi ý đã lưu…');
-    let usedModel = '';
     try {
-      if (todo.length) {
-        const res = await askAI(todo.map(q => ({ n: q.n, question: q.title, answers: q.answers, multi: q.multi })));
-        if (!res.ok) throw new Error(res.error);
-        usedModel = res.model ? ` (dùng ${res.model})` : '';
-        for (const a of res.answers) {
-          const q = todo.find(x => x.n === String(a.n));
-          if (!q) continue;
-          bank[q.key] = { picks: a.choices.filter(i => q.answers[i] != null).map(i => q.answers[i]), why: a.why, confidence: a.confidence };
-        }
-        writeJSON(LS_AI, bank);
-      }
-      let shown = 0;
-      for (const q of qs) if (bank[q.key]) { annotate(q, bank[q.key]); shown++; }
+      if (qs.length) done.push(await suggestChoice(qs, bank));
+      if (countBlanks(groups)) done.push(await suggestFill(groups, bank));
+      if (ms.length) done.push(await suggestMatch(ms, bank));
       Q.busy = false;
-      quizStatus(`Đã gợi ý ${shown}/${qs.length} câu${usedModel}. Xem lại, rồi bấm "Điền gợi ý" hoặc tự chọn.`);
+      quizStatus(`Đã gợi ý ${done.join(', ')}. Xem lại, rồi bấm "Điền gợi ý" hoặc tự làm.`);
     } catch (e) {
       Q.busy = false;
       quizStatus('Lỗi: ' + e.message);
     }
   }
 
-  function fillQuiz() {
+  // Thư viện kéo thả của LMS nghe sự kiện kéo thả HTML5, nên giả lập đúng chuỗi sự kiện như khi bạn kéo bằng chuột
+  function dragTo(el, target) {
+    const dt = new DataTransfer();
+    const fire = (node, type) => node.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+    fire(el, 'dragstart');
+    fire(target, 'dragenter');
+    fire(target, 'dragover');
+    fire(target, 'drop');
+    fire(el, 'dragend');
+  }
+
+  async function fillQuiz() {
     const bank = readJSON(LS_AI, {});
+    const done = [];
     let n = 0;
     for (const q of readQuiz()) {
       const s = bank[q.key];
@@ -621,6 +721,7 @@
       });
       n++;
     }
+    if (n) done.push(`${n} câu trắc nghiệm`);
     let blanks = 0;
     for (const g of readFill()) for (const b of g.blanks) {
       const s = bank[b.key];
@@ -631,8 +732,49 @@
       b.input.dispatchEvent(new Event('change', { bubbles: true }));
       blanks++;
     }
-    if (blanks) return quizStatus(`Đã điền ${blanks} ô. Kiểm tra lại, bấm "Lưu câu trả lời" ở từng câu rồi tự bấm "Nộp bài".`);
-    quizStatus(n ? `Đã điền ${n} câu. Kiểm tra lại rồi tự bấm "Nộp bài".` : 'Chưa có gợi ý nào, bấm "Gợi ý đáp án" trước.');
+    if (blanks) done.push(`${blanks} ô (nhớ bấm "Lưu câu trả lời" ở từng câu)`);
+    let matched = 0;
+    for (const q of readMatch()) {
+      const s = bank[q.key];
+      if (!s) continue;
+      for (const p of s.pairs) {
+        const card = q.cards.find(c => clean((c.querySelector('.card-header') || c).innerText) === p.target);
+        const li = [...q.m.querySelectorAll('li[draggable]')].find(x => clean(x.innerText) === p.item);
+        if (!card || !li || card.contains(li)) continue;
+        dragTo(li, card);
+        await sleep(120);
+      }
+      matched++;
+    }
+    if (matched) done.push(`${matched} câu nối cặp`);
+    quizStatus(done.length ? `Đã điền ${done.join(', ')}. Kiểm tra lại rồi tự bấm "Nộp bài".` : 'Chưa có gợi ý nào, bấm "Gợi ý đáp án" trước.');
+  }
+
+  const toHtml = text => text.trim().split(/\n\s*\n/).map(p => `<p>${esc(p.trim()).replace(/\n/g, '<br>')}</p>`).join('');
+
+  async function writeDraft() {
+    const w = readWrite();
+    if (!w) return quizStatus('Mở khung "Bài làm" của bài tập viết, hoặc bấm "+ THẢO LUẬN" dưới bài học, rồi bấm lại.');
+    const current = clean(w.editor.document ? w.editor.document.getBody().getText() : w.editor.getData().replace(/<[^>]+>/g, ' '));
+    if (current && !window.confirm('Khung viết đang có nội dung. Thay bằng bản nháp AI?')) return;
+    const idea = ui ? ui.$('.qidea').value.trim() : '';
+    Q.busy = true;
+    quizStatus(w.kind === 'discussion' ? 'AI đang viết nháp bài thảo luận…' : 'AI đang viết nháp bài làm…');
+    try {
+      const res = await askAI(null, { kind: 'write', type: w.kind, prompt: w.prompt, idea });
+      if (!res.ok) throw new Error(res.error);
+      // setData rồi báo "change" để trang cập nhật nội dung (và bật nút nộp/lưu)
+      w.editor.setData(toHtml(res.body), { callback: () => w.editor.fire('change') });
+      if (w.titleInput && res.title && !w.titleInput.value.trim()) {
+        w.titleInput.value = res.title.slice(0, 500);
+        w.titleInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      Q.busy = false;
+      quizStatus(`Đã viết nháp${modelNote(res)}. ${res.note || ''} Đọc và sửa theo ý bạn, rồi tự bấm "${w.kind === 'discussion' ? 'Lưu lại' : 'Xác nhận nộp bài'}".`);
+    } catch (e) {
+      Q.busy = false;
+      quizStatus('Lỗi: ' + e.message);
+    }
   }
 
   // ---------- 4. Bảng điều khiển ----------
@@ -730,6 +872,11 @@
     .qrow button:hover:not(:disabled) { border-color: var(--ai); }
     .qrow button.qsuggest { background: var(--ai); border-color: var(--ai); color: #fff; font-weight: 600; }
     .qrow button.qkey { flex: 0 0 auto; }
+    .wrow[hidden] { display: none; }
+    .wrow { display: flex; gap: 6px; margin: 0 0 8px; }
+    .wrow input { flex: 1; min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
+      background: var(--paper); color: var(--text); font-size: 12px; }
+    .wrow button.qwrite { flex: 0 0 auto; background: var(--ai); border-color: var(--ai); color: #fff; font-weight: 600; }
     .qrow button:disabled { opacity: .45; cursor: default; }
     .qstatus { font-size: 12px; }
 
@@ -767,10 +914,11 @@
         <section class="note sleep"></section>
         <section class="status"></section>
         <div class="row"><button class="primary go"></button><button class="scan">↻ Quét lại</button><button class="mute"></button></div>
-        <details class="quiz" open><summary>Trợ lý trắc nghiệm (AI)</summary>
+        <details class="quiz" open><summary>Trợ lý làm bài (AI)</summary>
           <div class="qstatus"></div>
           <div class="qrow"><button class="qsuggest">🤖 Gợi ý đáp án</button><button class="qfill">✍ Điền gợi ý</button><button class="qkey">⚙ Khoá API</button></div>
-          <div class="muted">Không tự nộp bài. Gợi ý được lưu lại: lần sau gặp câu giống hệt sẽ dùng luôn, không tốn tiền API.</div>
+          <div class="qrow wrow" hidden><input class="qidea" placeholder="Ý bạn muốn viết (không bắt buộc)"><button class="qwrite">📝 Viết nháp</button></div>
+          <div class="muted">Không tự nộp bài hay đăng bài. Gợi ý được lưu lại: lần sau gặp câu giống hệt sẽ dùng luôn, không tốn tiền API.</div>
         </details>
         <details class="cfg"><summary>Cài đặt</summary>
           <div class="muted">Loại mục cần học:</div>
@@ -815,6 +963,7 @@
     });
     $('.qsuggest').addEventListener('click', () => suggestQuiz());
     $('.qfill').addEventListener('click', () => fillQuiz());
+    $('.qwrite').addEventListener('click', () => writeDraft());
     $('.qkey').addEventListener('click', () => window.postMessage({ vnuTreo: 'open-options' }, location.origin));
     $('.update').addEventListener('click', e => {
       if (!e.target.classList.contains('updlater')) return;
@@ -909,13 +1058,18 @@
     const fill = readFill();
     const nb = countBlanks(fill);
     const nmc = readQuiz().length;
-    const nq = nmc || nb;
-    if (!nq && !Q.busy) Q.status = '';
-    $('.qstatus').textContent = Q.status || (nmc ? `Trang có ${nmc} câu hỏi.`
-      : nb ? `Trang có ${nb} ô cần điền${fill.some(g => g.audio) ? ' (bài nghe, cần khoá Gemini)' : ''}.`
-      : 'Mở một bài trắc nghiệm (bấm "LÀM BÀI") để dùng.');
-    $('.qsuggest').disabled = Q.busy || !nq;
-    $('.qfill').disabled = Q.busy || !nq;
+    const nm = readMatch().length;
+    const w = readWrite();
+    const found = [nmc && `${nmc} câu trắc nghiệm`, nb && `${nb} ô cần điền${fill.some(g => g.audio) ? ' (bài nghe, cần khoá Gemini)' : ''}`,
+      nm && `${nm} câu nối cặp`].filter(Boolean);
+    if (!found.length && !w && !Q.busy) Q.status = '';
+    $('.qstatus').textContent = Q.status || (found.length ? `Trang có ${found.join(', ')}.`
+      : w ? (w.kind === 'discussion' ? 'Đang mở khung viết thảo luận.' : 'Trang có khung "Bài làm" để viết.')
+      : 'Mở một bài làm (bấm "LÀM BÀI"), bài tập viết, hoặc "+ THẢO LUẬN" dưới bài học để dùng.');
+    $('.qsuggest').disabled = Q.busy || !found.length;
+    $('.qfill').disabled = Q.busy || !found.length;
+    $('.wrow').hidden = !w;
+    $('.qwrite').disabled = Q.busy;
   }
 
   window.addEventListener('message', e => {

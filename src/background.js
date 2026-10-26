@@ -6,8 +6,9 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const DEFAULT_MODEL = 'claude-opus-5-5';
 
-const SYSTEM = `Bạn là trợ lý ôn tập cho sinh viên Đại học Quốc gia Hà Nội, môn học trên hệ thống LMS (thường là pháp luật, chính trị, khoa học xã hội của Việt Nam).
+const SYSTEM = `Bạn là trợ lý ôn tập cho sinh viên Đại học Quốc gia Hà Nội, môn học trên hệ thống LMS (pháp luật, chính trị, khoa học xã hội của Việt Nam, hoặc tiếng Anh).
 Với mỗi câu hỏi trắc nghiệm được gửi đến, chọn đáp án đúng nhất theo kiến thức giáo trình đại học Việt Nam hiện hành.
+- Câu đọc hiểu: đề ("question") có kèm đoạn văn; trả lời dựa vào nội dung đoạn văn đó.
 - "answers" là danh sách đáp án, đánh số từ 0. Trả về số thứ tự đáp án bạn chọn trong "choices".
 - Câu có "multi": false chỉ chọn đúng 1 đáp án. Câu có "multi": true chọn tất cả đáp án đúng.
 - Đọc kỹ đề: nhiều câu hỏi đáp án SAI / KHÔNG đúng.
@@ -44,26 +45,15 @@ async function suggest(questions) {
 // ---------- Gemini (Google AI Studio, có gói miễn phí) ----------
 const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
 
-// responseSchema của Gemini dùng kiểu OpenAPI rút gọn: không có additionalProperties.
-const GEMINI_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    answers: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          n: { type: 'STRING' },
-          choices: { type: 'ARRAY', items: { type: 'INTEGER' } },
-          why: { type: 'STRING' },
-          confidence: { type: 'STRING', enum: ['cao', 'trung bình', 'thấp'] },
-        },
-        required: ['n', 'choices', 'why', 'confidence'],
-      },
-    },
-  },
-  required: ['answers'],
-};
+// responseSchema của Gemini dùng kiểu OpenAPI rút gọn: kiểu viết hoa, không có additionalProperties.
+function geminiSchema(s) {
+  const out = { type: s.type.toUpperCase() };
+  if (s.enum) out.enum = s.enum;
+  if (s.items) out.items = geminiSchema(s.items);
+  if (s.properties) out.properties = Object.fromEntries(Object.entries(s.properties).map(([k, v]) => [k, geminiSchema(v)]));
+  if (s.required) out.required = s.required;
+  return out;
+}
 
 // Model dự phòng khi model đang chọn quá tải (503), hết lượt miễn phí (429) hoặc không còn (404)
 const GEMINI_FALLBACKS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash'];
@@ -107,11 +97,11 @@ async function callGemini(model, key, req) {
   const parts = (body.candidates && body.candidates[0] && body.candidates[0].content && body.candidates[0].content.parts) || [];
   const text = parts.map(p => p.text || '').join('');
   if (!text) throw new GeminiError('Gemini không trả về kết quả.', { retry: true });
-  return JSON.parse(text).answers;
+  return JSON.parse(text);
 }
 
 const suggestGemini = questions =>
-  askGemini({ system: SYSTEM, parts: [{ text: JSON.stringify({ questions }) }], schema: GEMINI_SCHEMA });
+  askGemini({ system: SYSTEM, parts: [{ text: JSON.stringify({ questions }) }], schema: geminiSchema(SCHEMA) });
 
 // Thử model đang chọn trước (quá tải thì thử lại sau 3 giây), không được thì lần lượt chuyển sang model dự phòng.
 async function askGemini(req) {
@@ -123,7 +113,7 @@ async function askGemini(req) {
   for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        return { answers: await callGemini(model, geminiKey, req), model };
+        return { ...(await callGemini(model, geminiKey, req)), model };
       } catch (e) {
         if (!(e instanceof GeminiError) || (!e.retry && !e.nextModel)) throw e;
         if (attempt === 0 && e.retry) { await wait(3000); continue; }
@@ -157,73 +147,91 @@ async function askClaude(system, schema, content) {
   if (response.stop_reason === 'max_tokens') throw new Error('Câu trả lời bị cắt ngắn, hãy thử lại với ít câu hơn.');
   const text = response.content.find(b => b.type === 'text');
   if (!text) throw new Error('Claude không trả về kết quả.');
-  return { answers: JSON.parse(text.text).answers, model: response.model };
+  return { ...JSON.parse(text.text), model: response.model };
 }
 
-// ---------- Bài điền chỗ trống / bài nghe ----------
-const FILL_SYSTEM = `Bạn giúp sinh viên ôn tập dạng bài điền vào chỗ trống trên LMS, thường là bài nghe tiếng Anh.
-- "context" là đề bài, trong đó các chỗ trống được đánh số như (1) ____, (2) ____.
-- Mỗi ô trong "blanks" có "n" (ví dụ "1.1") và "label" (ví dụ "1-"); số trong label ứng với chỗ trống cùng số trong đề.
-- Nếu có file audio: nghe hết, điền đúng từ hoặc cụm từ nghe được, khớp ngữ pháp với câu trong đề và giới hạn số từ nếu đề có nêu.
-- "text": chỉ ghi đáp án cần điền, không ghi số thứ tự. Nếu "caps" là true thì viết IN HOA.
-- "why": giải thích ngắn bằng tiếng Việt (1 câu), trích ý nghe được trong audio nếu có.
-- "confidence": "cao", "trung bình" hoặc "thấp".`;
-
-const FILL_SCHEMA = {
+// ---------- Bài điền chỗ trống, nối cặp, bài viết ----------
+const CONFIDENCE = { type: 'string', enum: ['cao', 'trung bình', 'thấp'] };
+const answersOf = props => ({
   type: 'object',
   properties: {
     answers: {
       type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          n: { type: 'string' },
-          text: { type: 'string' },
-          why: { type: 'string' },
-          confidence: { type: 'string', enum: ['cao', 'trung bình', 'thấp'] },
-        },
-        required: ['n', 'text', 'why', 'confidence'],
-        additionalProperties: false,
-      },
+      items: { type: 'object', properties: props, required: Object.keys(props), additionalProperties: false },
     },
   },
   required: ['answers'],
   additionalProperties: false,
-};
+});
 
-const GEMINI_FILL_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    answers: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          n: { type: 'STRING' },
-          text: { type: 'STRING' },
-          why: { type: 'STRING' },
-          confidence: { type: 'STRING', enum: ['cao', 'trung bình', 'thấp'] },
+const TASKS = {
+  // Bài điền chỗ trống, thường là bài nghe: đề có (1) ____, mỗi ô có n ("1.1") và label ("1-" hoặc câu cần viết lại)
+  fill: {
+    system: `Bạn giúp sinh viên ôn tập dạng bài điền vào ô trống trên LMS, thường là bài tiếng Anh.
+- "context" là đề chung, có thể có các chỗ trống được đánh số như (1) ____, (2) ____.
+- Mỗi ô trong "blanks" có "n" (ví dụ "1.1") và "label". Label có thể chỉ là số ("1-", ứng với chỗ trống cùng số trong đề) hoặc là câu riêng của ô đó (ví dụ câu cần viết lại theo yêu cầu của đề).
+- Nếu có file audio: nghe hết, điền đúng từ hoặc cụm từ nghe được, khớp ngữ pháp với câu trong đề và giới hạn số từ nếu đề có nêu.
+- Làm đúng mọi quy định trong đề (dấu chấm cuối câu, viết hoa chữ đầu câu...).
+- "text": chỉ ghi nội dung cần điền vào ô, không ghi số thứ tự. Nếu "caps" là true thì viết IN HOA.
+- "why": giải thích ngắn bằng tiếng Việt (1 câu), trích ý nghe được trong audio nếu có.
+- "confidence": "cao", "trung bình" hoặc "thấp".`,
+    schema: answersOf({ n: { type: 'string' }, text: { type: 'string' }, why: { type: 'string' }, confidence: CONFIDENCE }),
+  },
+  // Kéo thả nối cặp: mỗi câu có danh sách mục để kéo và các ô đích
+  match: {
+    system: `Bạn giúp sinh viên ôn tập dạng bài nối cặp (kéo thả) trên LMS, thường là bài tiếng Anh.
+- "context" là đề chung (có thể có đoạn văn cần đọc). Mỗi câu trong "questions" có "n", "title" (đề riêng nếu có), "items" (các mục để kéo, đánh số từ 0) và "targets" (các ô đích, đánh số từ 0).
+- Ghép mỗi mục với ô đích đúng của nó. Ví dụ: câu hỏi -> câu trả lời trong đoạn văn; hoặc bài sắp xếp câu, khi items là số thứ tự vị trí (1, 2, 3...) và targets là các từ: đặt số vị trí vào từ đứng ở vị trí đó trong câu đúng.
+- "pairs": mỗi phần tử là { "item": số của mục, "target": số của ô đích }. Mỗi mục dùng đúng một lần.
+- "why": giải thích ngắn bằng tiếng Việt (1 câu), với bài sắp xếp thì ghi câu hoàn chỉnh.
+- "confidence": "cao", "trung bình" hoặc "thấp".`,
+    schema: answersOf({
+      n: { type: 'string' },
+      pairs: {
+        type: 'array',
+        items: {
+          type: 'object', properties: { item: { type: 'integer' }, target: { type: 'integer' } },
+          required: ['item', 'target'], additionalProperties: false,
         },
-        required: ['n', 'text', 'why', 'confidence'],
       },
+      why: { type: 'string' },
+      confidence: CONFIDENCE,
+    }),
+  },
+  // Bài tập nộp bằng bài viết, hoặc viết thảo luận / cảm nghĩ dưới bài học
+  write: {
+    system: `Bạn giúp sinh viên Đại học Quốc gia Hà Nội viết bản nháp cho bài tập viết hoặc bài thảo luận trên LMS.
+- "kind" là "assignment" (bài tập giảng viên giao, "prompt" là đề bài) hoặc "discussion" (viết thảo luận / cảm nghĩ về bài học, "prompt" là nội dung bài học).
+- "idea" là ý sinh viên muốn viết (có thể trống). Nếu có, bám theo ý đó.
+- Viết bằng ngôn ngữ của đề bài / bài học (bài tiếng Anh thì viết tiếng Anh), giọng một sinh viên năm nhất, tự nhiên, không sáo rỗng.
+- Làm đúng mọi yêu cầu của đề (số câu, số từ, dạng bài). Đề yêu cầu làm từng câu thì đánh số từng câu như đề.
+- Bài thảo luận: 80-150 từ, nêu cảm nghĩ và một điều rút ra cụ thể; "title" là tiêu đề ngắn (dưới 12 từ). Bài tập: "title" để trống.
+- "body": nội dung, mỗi đoạn hoặc mỗi câu trả lời cách nhau bằng một dòng trống, không dùng markdown.
+- "note": nhắc sinh viên bằng tiếng Việt (1 câu) điều nên tự kiểm tra hoặc sửa thêm.`,
+    schema: {
+      type: 'object',
+      properties: { title: { type: 'string' }, body: { type: 'string' }, note: { type: 'string' } },
+      required: ['title', 'body', 'note'],
+      additionalProperties: false,
     },
   },
-  required: ['answers'],
 };
 
-// Claude không nghe được audio, nên bài có audio luôn dùng Gemini (nếu đã nhập khoá Gemini).
-async function fillBlanks({ context, caps, audio, blanks }) {
+// Claude không nghe được audio, nên việc có audio luôn dùng Gemini (nếu đã nhập khoá Gemini).
+async function runTask({ kind, audio, ...data }) {
+  const task = TASKS[kind];
+  if (!task) throw new Error('Không rõ loại yêu cầu: ' + kind);
   const { provider, geminiKey } = await chrome.storage.local.get(['provider', 'geminiKey']);
-  const text = JSON.stringify({ context, caps, blanks });
+  const text = JSON.stringify(data);
   if (audio || provider === 'gemini') {
     if (audio && !geminiKey) {
       throw new GeminiError('Bài nghe cần khoá Gemini (Claude không nghe được audio). Bấm "⚙ Khoá API", chọn Google Gemini và nhập khoá miễn phí.');
     }
     const parts = [{ text }];
     if (audio) parts.push({ inlineData: { mimeType: audio.mime, data: audio.data } });
-    return askGemini({ system: FILL_SYSTEM, parts, schema: GEMINI_FILL_SCHEMA });
+    return askGemini({ system: task.system, parts, schema: geminiSchema(task.schema) });
   }
-  return askClaude(FILL_SYSTEM, FILL_SCHEMA, text);
+  return askClaude(task.system, task.schema, text);
 }
 
 function describeError(e) {
@@ -304,9 +312,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch(e => sendResponse({ ok: false, error: describeError(e) }));
     return true; // trả lời bất đồng bộ
   }
-  if (msg && msg.type === 'ai-fill') {
-    fillBlanks(msg.task)
-      .then(({ answers, model }) => sendResponse({ ok: true, answers, model }))
+  if (msg && msg.type === 'ai-task') {
+    runTask(msg.task)
+      .then(result => sendResponse({ ok: true, ...result }))
       .catch(e => sendResponse({ ok: false, error: describeError(e) }));
     return true;
   }
