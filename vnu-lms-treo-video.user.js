@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         VNU LMS - Treo học
 // @namespace    vnu-lms-keepalive
-// @version      3.0
+// @version      3.2
 // @description  Tự học lần lượt các mục trên LMS VNU cho đến khi đạt yêu cầu, giữ video chạy khi treo máy.
 // @match        https://lms.vnu.edu.vn/*
 // @run-at       document-start
@@ -552,20 +552,35 @@
     :host { all: initial;
       --ink: #14213d; --navy: #1b3a6b; --blue: #2457a8; --paper: #ffffff; --wash: #f3f5f9; --line: #dfe4ec;
       --text: #1a2233; --sub: #5d6880; --go: #1d7a4e; --go-wash: #e3f3ea; --amber: #a86a12; --amber-wash: #fdf3dc;
-      --red: #b8322a; --red-wash: #fbe9e7; --ai: #5b46b0; --ai-wash: #eeebfa; }
+      --red: #b8322a; --red-wash: #fbe9e7; --ai: #5b46b0; --ai-wash: #eeebfa;
+      --hd: var(--ink); --hd-text: #fff; --hd-sub: #a9b6d0; --hd-rule: transparent; --hd-x: #c9d4ea; --hd-x-bg: rgba(255,255,255,.08);
+      --hd-btn: rgba(255,255,255,.06); --hd-btn-hover: rgba(255,255,255,.14); --hd-btn-line: rgba(255,255,255,.16); --hd-btn-text: #dbe3f2;
+      --hd-primary: #fff; --hd-primary-hover: #e6edf9; --hd-primary-text: var(--ink); --hd-track: rgba(255,255,255,.14); --hd-fill: #5fd49a;
+      --hd-tip: #24365c; --hd-tip-text: #dbe5f7; --hd-upd: #1d5c41; --hd-upd-text: #dcf6e8; --hd-code: rgba(255,255,255,.14);
+      --hd-note-btn: rgba(255,255,255,.9); --fab: var(--ink); --fab-hover: var(--navy); --fab-text: #fff; --fab-dot: #8fa3c7; --fab-line: transparent; }
+    /* Giao diện tối: theo máy khi chọn "Xanh đậm", hoặc luôn tối khi chọn "Tối" */
     @media (prefers-color-scheme: dark) {
-      :host { --ink: #22355c; --navy: #2b4373; --paper: #171c26; --wash: #1f2531; --line: #2e3646; --text: #e4e8f0; --sub: #98a2b6;
+      :host(:not([data-theme=white]):not([data-theme=dark])) { --ink: #22355c; --navy: #2b4373; --paper: #171c26; --wash: #1f2531; --line: #2e3646; --text: #e4e8f0; --sub: #98a2b6;
         --go-wash: #183126; --amber-wash: #33291a; --red-wash: #3a1e1c; --ai-wash: #262040; --blue: #6f9be6; --ai: #a493ec; --go: #4cc287; }
     }
+    :host([data-theme=dark]) { --ink: #22355c; --navy: #2b4373; --paper: #171c26; --wash: #1f2531; --line: #2e3646; --text: #e4e8f0; --sub: #98a2b6;
+        --go-wash: #183126; --amber-wash: #33291a; --red-wash: #3a1e1c; --ai-wash: #262040; --blue: #6f9be6; --ai: #a493ec; --go: #4cc287; }
+    /* Giao diện trắng: phần đầu bảng cũng nền trắng, luôn sáng */
+    :host([data-theme=white]) {
+      --hd: #ffffff; --hd-text: #1a2233; --hd-sub: #5d6880; --hd-rule: #dfe4ec; --hd-x: #5d6880; --hd-x-bg: #f3f5f9;
+      --hd-btn: #f3f5f9; --hd-btn-hover: #e7ebf2; --hd-btn-line: #dfe4ec; --hd-btn-text: #1a2233;
+      --hd-primary: #2457a8; --hd-primary-hover: #1b3a6b; --hd-primary-text: #fff; --hd-track: #e6eaf1; --hd-fill: #1d7a4e;
+      --hd-tip: #eef3fb; --hd-tip-text: #1b3a6b; --hd-upd: #e3f3ea; --hd-upd-text: #14532d; --hd-code: rgba(20,33,61,.08);
+      --hd-note-btn: #fff; --fab: #fff; --fab-hover: #f3f5f9; --fab-text: #14213d; --fab-dot: #2457a8; --fab-line: #dfe4ec; }
     * { box-sizing: border-box; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto, sans-serif; }
     button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
-    .fab { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 999px; padding: 9px 16px 9px 12px;
-      font-size: 13px; font-weight: 600; color: #fff; background: var(--ink); cursor: pointer;
-      box-shadow: 0 6px 18px rgba(20,33,61,.35); font-variant-numeric: tabular-nums; }
-    .fab::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #8fa3c7; }
-    .fab:hover { background: var(--navy); }
-    .fab.run { background: var(--go); box-shadow: 0 6px 18px rgba(29,122,78,.4); }
+    .fab { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 9px 16px 9px 12px;
+      font-size: 13px; font-weight: 600; color: var(--fab-text); background: var(--fab); cursor: pointer;
+      border: 1px solid var(--fab-line); box-shadow: 0 6px 18px rgba(20,33,61,.35); font-variant-numeric: tabular-nums; }
+    .fab::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--fab-dot); }
+    .fab:hover { background: var(--fab-hover); }
+    .fab.run { color: #fff; border-color: var(--go); background: var(--go); box-shadow: 0 6px 18px rgba(29,122,78,.4); }
     .fab.run::before { background: #b8f5d2; animation: pulse 1.6s ease-in-out infinite; }
     @keyframes pulse { 50% { opacity: .3; } }
     @media (prefers-reduced-motion: reduce) { .fab.run::before { animation: none; } }
@@ -575,31 +590,31 @@
       box-shadow: 0 18px 48px rgba(10,20,40,.32), 0 0 0 1px rgba(20,33,61,.12); scrollbar-width: thin; }
     .panel[hidden] { display: none; }
     header { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 12px 16px;
-      position: sticky; top: 0; z-index: 2; background: var(--ink); color: #fff; }
+      position: sticky; top: 0; z-index: 2; background: var(--hd); color: var(--hd-text); border-bottom: 1px solid var(--hd-rule); }
     header b { font-size: 15px; font-weight: 700; letter-spacing: .01em; }
-    .x { width: 28px; height: 28px; border: 0; border-radius: 8px; background: rgba(255,255,255,.08); color: #c9d4ea;
+    .x { width: 28px; height: 28px; border: 0; border-radius: 8px; background: var(--hd-x-bg); color: var(--hd-x);
       font-size: 18px; line-height: 1; cursor: pointer; }
-    .x:hover { background: rgba(255,255,255,.18); color: #fff; }
+    .x:hover { background: var(--hd-btn-hover); color: var(--hd-text); }
 
     /* Khối trạng thái: phần nổi bật nhất của bảng */
-    .status { padding: 14px 16px 12px; display: grid; gap: 6px; background: var(--ink); color: #fff; }
-    .status .muted { color: #a9b6d0; }
+    .status { padding: 14px 16px 12px; display: grid; gap: 6px; background: var(--hd); color: var(--hd-text); }
+    .status .muted { color: var(--hd-sub); }
     .status .cur { font-weight: 600; font-size: 14px; }
     .status .time { font-size: 40px; font-weight: 300; line-height: 1.05; letter-spacing: -.02em;
       font-variant-numeric: tabular-nums; margin: 2px 0; }
     .status .warn { color: #5c3b06; }
     .muted { color: var(--sub); font-size: 12px; }
     .warn { color: var(--amber); background: var(--amber-wash); border-radius: 8px; padding: 7px 10px; font-size: 12px; }
-    .bar { height: 6px; background: rgba(255,255,255,.14); border-radius: 3px; overflow: hidden; margin-top: 2px; }
-    .bar i { display: block; height: 100%; background: #5fd49a; border-radius: 3px; transition: width .4s; }
+    .bar { height: 6px; background: var(--hd-track); border-radius: 3px; overflow: hidden; margin-top: 2px; }
+    .bar i { display: block; height: 100%; background: var(--hd-fill); border-radius: 3px; transition: width .4s; }
     .status .warn { background: #fde7b0; }
 
-    .row { display: flex; gap: 8px; padding: 12px 16px; background: var(--ink); }
-    .row button { flex: 1; padding: 9px 8px; border-radius: 9px; border: 1px solid rgba(255,255,255,.16);
-      background: rgba(255,255,255,.06); color: #dbe3f2; cursor: pointer; font-size: 13px; }
-    .row button:hover:not(:disabled) { background: rgba(255,255,255,.14); }
-    .row button.primary { flex: 1.6; background: #fff; border-color: #fff; color: var(--ink); font-weight: 700; }
-    .row button.primary:hover { background: #e6edf9; }
+    .row { display: flex; gap: 8px; padding: 12px 16px; background: var(--hd); border-bottom: 1px solid var(--hd-rule); }
+    .row button { flex: 1; padding: 9px 8px; border-radius: 9px; border: 1px solid var(--hd-btn-line);
+      background: var(--hd-btn); color: var(--hd-btn-text); cursor: pointer; font-size: 13px; }
+    .row button:hover:not(:disabled) { background: var(--hd-btn-hover); }
+    .row button.primary { flex: 1.6; background: var(--hd-primary); border-color: var(--hd-primary); color: var(--hd-primary-text); font-weight: 700; }
+    .row button.primary:hover:not(:disabled) { background: var(--hd-primary-hover); }
     .row button.primary.stop { background: #e5544b; border-color: #e5544b; color: #fff; }
     .row button:disabled { opacity: .4; cursor: default; }
     .row button.mute { flex: 0 0 auto; white-space: nowrap; }
@@ -646,10 +661,10 @@
     .qstatus { font-size: 12px; }
 
     .note:empty { display: none; }
-    .note { padding: 12px 16px 0; background: var(--ink); }
-    .note .tip { background: #24365c; color: #dbe5f7; border-radius: 10px; padding: 10px 12px; font-size: 12px; }
+    .note { padding: 12px 16px 0; background: var(--hd); }
+    .note .tip { background: var(--hd-tip); color: var(--hd-tip-text); border-radius: 10px; padding: 10px 12px; font-size: 12px; }
     .note .bad { background: #fbe1de; color: #7d1a14; }
-    .update .tip { background: #1d5c41; color: #dcf6e8; }
+    .update .tip { background: var(--hd-upd); color: var(--hd-upd-text); }
     .note .links { margin: 6px 0; }
     .note a { color: inherit; font-weight: 700; }
     .note summary { font-size: 12px; padding: 6px 0 0; }
@@ -657,10 +672,11 @@
     .note details { border: 0; padding: 0; }
     .note ol { max-height: none; margin: 6px 0 0; padding-left: 18px; list-style: decimal; }
     .note li { padding: 2px 0; }
-    .note code { background: rgba(255,255,255,.14); border-radius: 4px; padding: 0 4px; font-family: Consolas, monospace; }
+    .note code { background: var(--hd-code); border-radius: 4px; padding: 0 4px; font-family: Consolas, monospace; }
     .note .bad code { background: rgba(125,26,20,.1); }
-    .note button { margin-top: 8px; padding: 5px 12px; border-radius: 7px; border: 0; background: rgba(255,255,255,.9);
+    .note button { margin-top: 8px; padding: 5px 12px; border-radius: 7px; border: 1px solid var(--hd-btn-line); background: var(--hd-note-btn);
       color: var(--ink); cursor: pointer; font-size: 12px; font-weight: 600; }
+    select { padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--text); font: inherit; font-size: 12px; }
   `;
   const ICON = { pending: '○', holding: '▶', checking: '…', done: '✓', fail: '✗', error: '⚠', locked: '🔒' };
 

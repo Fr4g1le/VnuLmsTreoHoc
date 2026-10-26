@@ -37,9 +37,9 @@ const SCHEMA = {
   additionalProperties: false,
 };
 
-async function suggest(questions) {
+async function suggest(questions, progress) {
   const { provider } = await chrome.storage.local.get(['provider']);
-  return provider === 'gemini' ? suggestGemini(questions) : suggestClaude(questions);
+  return provider === 'gemini' ? suggestGemini(questions, progress) : suggestClaude(questions, progress);
 }
 
 // ---------- Gemini (Google AI Studio, có gói miễn phí) ----------
@@ -67,44 +67,85 @@ class GeminiError extends Error {
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
+// Gemini im lặng quá 150 giây (chưa trả lời, hoặc dừng giữa luồng) thì coi như model bận và chuyển model khác.
+const GEMINI_IDLE = 150000;
+
 // req = { system, parts, schema }: parts là nội dung gửi lên (chữ, có thể kèm audio).
-async function callGemini(model, key, req) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  let res;
+// Dùng bản trả về dạng luồng (SSE): biết ngay model đã bắt đầu trả lời, và báo tiến độ trong lúc chờ.
+async function callGemini(model, key, req, progress) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
+  const abort = new AbortController();
+  let timer;
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => abort.abort(), GEMINI_IDLE); };
+  arm();
   try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: req.system }] },
-        contents: [{ role: 'user', parts: req.parts }],
-        generationConfig: { responseMimeType: 'application/json', responseSchema: req.schema },
-      }),
-    });
-  } catch (e) {
-    throw new GeminiError('Không kết nối được tới Gemini.', { retry: true });
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        signal: abort.signal,
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: req.system }] },
+          contents: [{ role: 'user', parts: req.parts }],
+          generationConfig: { responseMimeType: 'application/json', responseSchema: req.schema },
+        }),
+      });
+    } catch (e) {
+      if (abort.signal.aborted) throw new GeminiError(`Gemini "${model}" không phản hồi quá ${GEMINI_IDLE / 1000} giây.`, { nextModel: true });
+      throw new GeminiError('Không kết nối được tới Gemini.', { retry: true });
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const err = Array.isArray(body) ? body[0] && body[0].error : body.error;
+      const msg = (err && err.message) || res.statusText;
+      if (res.status === 400 && /api key/i.test(msg)) throw new GeminiError('Khoá Gemini không hợp lệ.', { status: 400 });
+      if (res.status === 503 || res.status === 500) throw new GeminiError(`Gemini "${model}" đang quá tải.`, { status: res.status, retry: true, nextModel: true });
+      if (res.status === 429) throw new GeminiError(`Gemini "${model}" hết lượt miễn phí tạm thời.`, { status: 429, nextModel: true });
+      if (res.status === 404) throw new GeminiError(`Gemini không có model "${model}".`, { status: 404, nextModel: true });
+      throw new GeminiError(`Lỗi từ Gemini (${res.status}): ${msg}`, { status: res.status });
+    }
+    arm();
+    progress(`${model} đang trả lời…`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '', text = '';
+    const handle = line => {
+      if (!line.startsWith('data:')) return;
+      const ev = JSON.parse(line.slice(5));
+      if (ev.promptFeedback && ev.promptFeedback.blockReason) throw new GeminiError('Gemini chặn câu hỏi này.');
+      const parts = (ev.candidates && ev.candidates[0] && ev.candidates[0].content && ev.candidates[0].content.parts) || [];
+      for (const p of parts) if (p.text && !p.thought) text += p.text;
+    };
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        arm();
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split(/\r?\n/);
+        buf = lines.pop();
+        lines.forEach(handle);
+        if (text) progress(`${model} đang trả lời… (${text.length} ký tự)`);
+      }
+      handle(buf);
+    } catch (e) {
+      if (e instanceof GeminiError) throw e;
+      if (abort.signal.aborted) throw new GeminiError(`Gemini "${model}" ngừng trả lời giữa chừng.`, { nextModel: true });
+      throw new GeminiError(`Mất kết nối với Gemini "${model}" giữa chừng.`, { retry: true, nextModel: true });
+    }
+    if (!text) throw new GeminiError('Gemini không trả về kết quả.', { retry: true });
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(timer);
   }
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = (body.error && body.error.message) || res.statusText;
-    if (res.status === 400 && /api key/i.test(msg)) throw new GeminiError('Khoá Gemini không hợp lệ.', { status: 400 });
-    if (res.status === 503 || res.status === 500) throw new GeminiError(`Gemini "${model}" đang quá tải.`, { status: res.status, retry: true, nextModel: true });
-    if (res.status === 429) throw new GeminiError(`Gemini "${model}" hết lượt miễn phí tạm thời.`, { status: 429, nextModel: true });
-    if (res.status === 404) throw new GeminiError(`Gemini không có model "${model}".`, { status: 404, nextModel: true });
-    throw new GeminiError(`Lỗi từ Gemini (${res.status}): ${msg}`, { status: res.status });
-  }
-  if (body.promptFeedback && body.promptFeedback.blockReason) throw new GeminiError('Gemini chặn câu hỏi này.');
-  const parts = (body.candidates && body.candidates[0] && body.candidates[0].content && body.candidates[0].content.parts) || [];
-  const text = parts.map(p => p.text || '').join('');
-  if (!text) throw new GeminiError('Gemini không trả về kết quả.', { retry: true });
-  return JSON.parse(text);
 }
 
-const suggestGemini = questions =>
-  askGemini({ system: SYSTEM, parts: [{ text: JSON.stringify({ questions }) }], schema: geminiSchema(SCHEMA) });
+const suggestGemini = (questions, progress) =>
+  askGemini({ system: SYSTEM, parts: [{ text: JSON.stringify({ questions }) }], schema: geminiSchema(SCHEMA) }, progress);
 
 // Thử model đang chọn trước (quá tải thì thử lại sau 3 giây), không được thì lần lượt chuyển sang model dự phòng.
-async function askGemini(req) {
+async function askGemini(req, progress = () => {}) {
   const { geminiKey, geminiModel } = await chrome.storage.local.get(['geminiKey', 'geminiModel']);
   if (!geminiKey) throw new GeminiError('Chưa có khoá Gemini. Bấm "⚙ Khoá API" để nhập.');
   const chosen = (geminiModel || DEFAULT_GEMINI_MODEL).trim();
@@ -113,9 +154,11 @@ async function askGemini(req) {
   for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        return { ...(await callGemini(model, geminiKey, req)), model };
+        progress(`Đang gửi cho ${model}${attempt ? ' (thử lại)' : ''}…`);
+        return { ...(await callGemini(model, geminiKey, req, progress)), model };
       } catch (e) {
         if (!(e instanceof GeminiError) || (!e.retry && !e.nextModel)) throw e;
+        progress(e.message);
         if (attempt === 0 && e.retry) { await wait(3000); continue; }
         tried.push(e.message);
         break;
@@ -126,11 +169,12 @@ async function askGemini(req) {
 }
 
 // ---------- Claude ----------
-const suggestClaude = questions => askClaude(SYSTEM, SCHEMA, JSON.stringify({ questions }));
+const suggestClaude = (questions, progress) => askClaude(SYSTEM, SCHEMA, JSON.stringify({ questions }), progress);
 
-async function askClaude(system, schema, content) {
+async function askClaude(system, schema, content, progress = () => {}) {
   const { apiKey, model } = await chrome.storage.local.get(['apiKey', 'model']);
   if (!apiKey) throw new Error('Chưa có khoá API. Bấm "Cài khoá API" để nhập.');
+  progress(`Đang hỏi ${model || DEFAULT_MODEL}…`);
 
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   const response = await client.beta.messages.create({
@@ -218,7 +262,7 @@ const TASKS = {
 };
 
 // Claude không nghe được audio, nên việc có audio luôn dùng Gemini (nếu đã nhập khoá Gemini).
-async function runTask({ kind, audio, ...data }) {
+async function runTask({ kind, audio, ...data }, progress) {
   const task = TASKS[kind];
   if (!task) throw new Error('Không rõ loại yêu cầu: ' + kind);
   const { provider, geminiKey } = await chrome.storage.local.get(['provider', 'geminiKey']);
@@ -229,9 +273,9 @@ async function runTask({ kind, audio, ...data }) {
     }
     const parts = [{ text }];
     if (audio) parts.push({ inlineData: { mimeType: audio.mime, data: audio.data } });
-    return askGemini({ system: task.system, parts, schema: geminiSchema(task.schema) });
+    return askGemini({ system: task.system, parts, schema: geminiSchema(task.schema) }, progress);
   }
-  return askClaude(task.system, task.schema, text);
+  return askClaude(task.system, task.schema, text, progress);
 }
 
 function describeError(e) {
@@ -306,19 +350,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     updateStatus().then(sendResponse);
     return true;
   }
-  if (msg && msg.type === 'ai-suggest') {
-    suggest(msg.questions)
-      .then(({ answers, model }) => sendResponse({ ok: true, answers, model }))
-      .catch(e => sendResponse({ ok: false, error: describeError(e) }));
-    return true; // trả lời bất đồng bộ
-  }
-  if (msg && msg.type === 'ai-task') {
-    runTask(msg.task)
-      .then(result => sendResponse({ ok: true, ...result }))
-      .catch(e => sendResponse({ ok: false, error: describeError(e) }));
-    return true;
-  }
   if (msg && msg.type === 'open-options') chrome.runtime.openOptionsPage();
+});
+
+// Việc AI chạy qua một cổng kết nối (bridge.js mở) thay vì sendMessage: bài nghe có thể mất vài phút.
+// Cổng còn mở và nhịp báo tiến độ mỗi 15 giây giữ service worker không bị trình duyệt cho ngủ giữa chừng,
+// còn trang thì biết việc vẫn đang chạy.
+chrome.runtime.onConnect.addListener(port => {
+  if (port.name !== 'ai') return;
+  port.onMessage.addListener(async msg => {
+    let last = 'Đang xử lý…';
+    const progress = text => { last = text; try { port.postMessage({ progress: text }); } catch (e) {} };
+    const beat = setInterval(() => progress(last), 15000);
+    try {
+      const result = msg.type === 'ai-task' ? await runTask(msg.task, progress) : await suggest(msg.questions, progress);
+      port.postMessage({ done: true, ok: true, ...result });
+    } catch (e) {
+      try { port.postMessage({ done: true, ok: false, error: describeError(e) }); } catch (_) {}
+    } finally {
+      clearInterval(beat);
+    }
+  });
 });
 
 chrome.action.onClicked.addListener(tab => {

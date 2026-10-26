@@ -7,9 +7,23 @@ window.addEventListener('message', e => {
   if (e.source !== window || !e.data) return;
   const { vnuTreo, id, questions, task } = e.data;
   if (vnuTreo === 'ai-suggest' || vnuTreo === 'ai-task') {
-    chrome.runtime.sendMessage(vnuTreo === 'ai-task' ? { type: 'ai-task', task } : { type: 'ai-suggest', questions })
-      .then(res => window.postMessage({ vnuTreo: 'ai-result', id, ...res }, location.origin))
-      .catch(err => window.postMessage({ vnuTreo: 'ai-result', id, ok: false, error: String(err.message || err) }, location.origin));
+    // Mỗi yêu cầu một cổng kết nối: background gửi tiến độ trong lúc chờ AI, rồi kết quả.
+    // Cổng đóng mà chưa có kết quả nghĩa là background bị dừng giữa chừng.
+    const reply = res => window.postMessage({ vnuTreo: 'ai-result', id, ...res }, location.origin);
+    let done = false;
+    try {
+      const port = chrome.runtime.connect({ name: 'ai' });
+      port.onMessage.addListener(m => {
+        if (m.progress) window.postMessage({ vnuTreo: 'ai-progress', id, text: m.progress }, location.origin);
+        if (m.done) { done = true; reply(m); port.disconnect(); }
+      });
+      port.onDisconnect.addListener(() => {
+        if (!done) reply({ ok: false, error: 'Extension bị ngắt giữa chừng (có thể vừa cập nhật hoặc bị trình duyệt dừng). Tải lại trang (F5) rồi bấm lại.' });
+      });
+      port.postMessage(vnuTreo === 'ai-task' ? { type: 'ai-task', task } : { type: 'ai-suggest', questions });
+    } catch (err) {
+      reply({ ok: false, error: 'Mất kết nối với extension (có thể vừa cập nhật). Tải lại trang (F5) rồi bấm lại.' });
+    }
   }
   if (vnuTreo === 'open-options') chrome.runtime.sendMessage({ type: 'open-options' });
 });
