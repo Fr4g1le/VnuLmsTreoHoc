@@ -498,12 +498,12 @@
     render();
     try {
       const tests = await loadTests(classId);
+      // Luôn tìm từ đầu mục lục (bài chưa đạt đầu tiên), chỉ bỏ qua bài đang mở
       const cur = currentTest(tests);
-      const at = cur ? tests.indexOf(cur) : -1;
-      const order = [...tests.slice(at + 1), ...tests.slice(0, Math.max(0, at))].filter(t => !t.done && !lockReason(t));
+      const order = tests.filter(t => t !== cur && !t.done && !lockReason(t));
       // Mở lần lượt từng bài và đọc bảng Kết quả: đã có dòng "Đạt" thì ghi nhớ và mở bài sau
       for (const [i, next] of order.slice(0, 40).entries()) {
-        quizStatus(`${reason || ''}Đang kiểm tra bài ${i + 1}: ${next.title}`, true);
+        quizStatus(`${reason || ''}Đang tìm bài chưa đạt từ đầu mục lục (${i + 1}): ${next.title}`, true);
         const before = testResults();
         const prevRows = new Set(before ? before.rows : []);
         if (!(await openItem(next))) return quizStatus('Không mở được bài: ' + next.title + '. Hãy mở mục lục rồi bấm lại.', true);
@@ -1167,8 +1167,8 @@
           <div class="qstatus"></div>
           <div class="qrow"><button class="qsuggest">🤖 Gợi ý đáp án</button><button class="qfill">✍ Điền gợi ý</button><button class="qkey">⚙ Khoá API</button></div>
           <div class="qrow wrow" hidden><input class="qidea" placeholder="Ý bạn muốn viết (không bắt buộc)"><button class="qwrite">📝 Viết nháp</button></div>
-          <div class="qrow"><button class="qnext">⏭ Bài tập tiếp theo chưa đạt</button></div>
-          ${box('autoNextTest', 'Nộp bài xong mà Đạt thì tự mở bài tập tiếp theo')}
+          <div class="qrow"><button class="qnext" title="Mở bài kiểm tra đầu tiên (tính từ đầu mục lục) mà bảng Kết quả chưa có dòng Đạt">⏭ Bài tập chưa đạt đầu tiên</button></div>
+          ${box('autoNextTest', 'Nộp bài xong mà Đạt thì tự mở bài tập chưa đạt đầu tiên')}
           <div class="muted">Không tự nộp bài hay đăng bài. Gợi ý được lưu lại: lần sau gặp câu giống hệt sẽ dùng luôn, không tốn tiền API.</div>
         </details>
         <details class="cfg"><summary>Cài đặt</summary>
