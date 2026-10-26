@@ -1,7 +1,7 @@
 {
   "name": "vnu-lms-treo-hoc",
   "private": true,
-  "version": "3.7.0",
+  "version": "3.8.0",
   "scripts": {
     "build": "esbuild src/background.js --bundle --format=iife --platform=browser --target=chrome120 --minify --outfile=background.js"
   },
