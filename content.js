@@ -478,7 +478,83 @@
     // "Đã đạt" lấy theo bảng Kết quả trên trang bài (dòng "Đạt"), không theo dấu ✓ của mục lục: có bài LMS đánh ✓
     // mà bảng Kết quả vẫn trống. Bài đã thấy "Đạt" được nhớ lại để lần sau không phải mở lại.
     const heads = Object.keys(readJSON(LS_PASSED, {})).filter(k => k.startsWith('head:')).map(k => k.slice(5));
-    return tests.map(t => Object.assign({}, t, { done: heads.some(h => h.startsWith(norm(t.title))) }));
+    const learning = await loadLearning(classId);
+    return tests.map(t => Object.assign({}, t, {
+      done: heads.some(h => h.startsWith(norm(t.title))),
+      lmsPassed: !!(learning[t.id] && (learning[t.id].isPassed || learning[t.id].isFinish)),
+    }));
+  }
+
+  // ---------- Bài hết hạn mà chưa đạt (để báo giảng viên) ----------
+  // Lấy từ danh sách bài của lớp: đã quá hạn nộp mà LMS chưa ghi nhận đạt và chưa thấy dòng "Đạt" trên trang.
+  // Bài mở ra thấy "Ca thi đã kết thúc" thì ghi thêm điểm cao nhất đọc được từ bảng Kết quả (LS_EXPIRED).
+  const LS_EXPIRED = 'vnuTreoExpired';
+  const fmtDate = t => new Date(t).toLocaleDateString('vi-VN');
+  const expiredOf = tests => tests.filter(t => t.closesAt && t.closesAt < Date.now() && !t.done && !t.lmsPassed);
+  const viewHeadRaw = () => {
+    const view = document.querySelector('app-class-content-view');
+    return view ? (view.innerText.split('\n').find(x => x.trim()) || '').trim() : '';
+  };
+  // Tên lớp nằm trong ngoặc ở cuối tiêu đề mục, ví dụ "(Tiếng anh B1 FLF1107-07-UET-HKI2627)"
+  const classTitle = () => ((viewHeadRaw().match(/\(([^()]+)\)\s*$/) || [])[1] || '').trim();
+
+  async function showExpired() {
+    const classId = classIdFromUrl();
+    if (!classId || T.busy) return;
+    T.busy = true;
+    render();
+    try {
+      const tests = await loadTests(classId);
+      const seen = readJSON(LS_EXPIRED, {});
+      const list = expiredOf(tests).map(t => {
+        const known = Object.values(seen).find(e => norm(e.head).startsWith(norm(t.title)));
+        return { title: t.title, closes: fmtDate(t.closesAt), score: known && known.score };
+      });
+      const box = ui.$('.expired');
+      if (!list.length) {
+        box.innerHTML = '<div class="muted">Không có bài kiểm tra nào đã hết hạn mà chưa đạt. 🎉</div>';
+      } else {
+        const lop = classTitle() || readJSON('vnuTreoClassTitle', '');
+        const text = `Kính gửi thầy/cô,\nEm xin báo các bài kiểm tra đã hết hạn mà em chưa đạt${lop ? ` (lớp ${lop})` : ''}:\n` +
+          list.map((x, i) => `${i + 1}. ${x.title} — hạn ${x.closes}${x.score ? `, điểm cao nhất ${x.score}` : ''}`).join('\n') +
+          '\nEm mong thầy/cô xem xét mở lại giúp em. Em cảm ơn ạ.';
+        box.innerHTML = `<div class="muted">${list.length} bài đã hết hạn mà chưa đạt:</div>
+          <ol>${list.map(x => `<li>${esc(x.title)} <small>· hạn ${esc(x.closes)}${x.score ? ` · điểm cao nhất ${esc(x.score)}` : ''}</small></li>`).join('')}</ol>
+          <textarea class="exptext" rows="5" readonly></textarea>
+          <div class="qrow"><button class="expcopy">📋 Sao chép để gửi giảng viên</button></div>`;
+        box.querySelector('.exptext').value = text;
+        box.querySelector('.expcopy').addEventListener('click', async () => {
+          const ta = box.querySelector('.exptext');
+          try { await navigator.clipboard.writeText(ta.value); } catch (e) { ta.select(); document.execCommand('copy'); }
+          box.querySelector('.expcopy').textContent = '✓ Đã sao chép';
+        });
+      }
+      box.hidden = false;
+      quizStatus(list.length ? `Có ${list.length} bài đã hết hạn mà chưa đạt (xem danh sách bên dưới).` : 'Không có bài nào hết hạn mà chưa đạt.', true);
+    } catch (e) {
+      quizStatus('Lỗi: ' + e.message, true);
+    } finally {
+      T.busy = false;
+      render();
+    }
+  }
+
+  // Đang mở một bài "Ca thi đã kết thúc" mà bảng Kết quả không có dòng Đạt: báo ngay và ghi lại điểm cao nhất.
+  // Chờ tiêu đề đứng yên 3 giây (watchTestPass ghi T.head/T.headSince) để không đọc nhầm bảng của bài trước.
+  function watchExpiredPage() {
+    const view = document.querySelector('app-class-content-view');
+    if (!view || T.busy || !/Ca thi đã kết thúc/i.test(view.innerText)) return;
+    const r = testResults();
+    if (!r || r.pass > 0 || r.head !== T.head || Date.now() - (T.headSince || 0) < 3000 || T.expiredHead === r.head) return;
+    T.expiredHead = r.head;
+    const scores = r.rows.map(row => clean(row.cells[1] && row.cells[1].innerText)).filter(x => /\d/.test(x));
+    const best = scores.sort((a, b) => parseFloat(b) - parseFloat(a))[0] || '';
+    const seen = readJSON(LS_EXPIRED, {});
+    seen[r.head] = { head: viewHeadRaw(), score: best, at: Date.now() };
+    writeJSON(LS_EXPIRED, seen);
+    if (classTitle()) writeJSON('vnuTreoClassTitle', classTitle());
+    log('⚠ Bài đã hết hạn mà chưa đạt: ' + viewHeadRaw() + (best ? ` (điểm cao nhất ${best})` : ''));
+    quizStatus(`⚠ Bài này đã hết hạn ("Ca thi đã kết thúc") mà chưa đạt${best ? `, điểm cao nhất ${best}` : ''}. Bấm "📋 Bài hết hạn chưa đạt" để lấy danh sách báo giảng viên.`, true);
   }
 
   // Mục đang mở: tiêu đề nằm ở đầu khung nội dung. Lấy bài có tiêu đề dài nhất khớp với dòng đầu đó.
@@ -516,9 +592,13 @@
           continue;
         }
         log('⏭ Mở bài tập chưa đạt: ' + next.title);
-        return quizStatus(`Đã mở: ${next.title} (chưa có lần Đạt). Bấm "LÀM BÀI" khi sẵn sàng.`, true);
+        const expired = expiredOf(tests).length;
+        return quizStatus(`Đã mở: ${next.title} (chưa có lần Đạt). Bấm "LÀM BÀI" khi sẵn sàng.` +
+          (expired ? ` (Có ${expired} bài đã hết hạn mà chưa đạt: xem "📋 Bài hết hạn chưa đạt".)` : ''), true);
       }
-      quizStatus(order.length > 40 ? 'Đã kiểm tra 40 bài liền đều Đạt. Bấm lại để tìm tiếp.' : `Không còn bài tập nào khác chưa đạt (lớp có ${tests.length} bài tập) 🎉`, true);
+      const expired = expiredOf(tests).length;
+      quizStatus((order.length > 40 ? 'Đã kiểm tra 40 bài liền đều Đạt. Bấm lại để tìm tiếp.' : `Không còn bài tập nào khác chưa đạt (lớp có ${tests.length} bài tập) 🎉`) +
+        (expired ? ` Có ${expired} bài đã hết hạn mà chưa đạt: bấm "📋 Bài hết hạn chưa đạt".` : ''), true);
     } catch (e) {
       quizStatus('Lỗi: ' + e.message, true);
     } finally {
@@ -1144,6 +1224,12 @@
     .qrow button:hover:not(:disabled) { border-color: var(--ai); }
     .qrow button.qsuggest { background: var(--ai); border-color: var(--ai); color: #fff; font-weight: 600; }
     .qrow button.qkey { flex: 0 0 auto; }
+    .expired[hidden] { display: none; }
+    .expired { margin: 4px 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+    .expired ol { max-height: 180px; padding-left: 18px; list-style: decimal; }
+    .expired li { padding: 2px 0; }
+    .expired textarea { width: 100%; margin-top: 6px; font-family: inherit; font-size: 12px; line-height: 1.4; color: var(--text);
+      background: var(--wash); border: 1px solid var(--line); border-radius: 6px; padding: 6px; resize: vertical; }
     .wrow[hidden] { display: none; }
     .wrow { display: flex; gap: 6px; margin: 0 0 8px; }
     .wrow input { flex: 1; min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
@@ -1199,6 +1285,8 @@
           <div class="qrow"><button class="qsuggest">🤖 Gợi ý đáp án</button><button class="qfill">✍ Điền gợi ý</button><button class="qkey">⚙ Khoá API</button></div>
           <div class="qrow wrow" hidden><input class="qidea" placeholder="Ý bạn muốn viết (không bắt buộc)"><button class="qwrite">📝 Viết nháp</button></div>
           <div class="qrow"><button class="qnext" title="Mở bài kiểm tra đầu tiên (tính từ đầu mục lục) mà bảng Kết quả chưa có dòng Đạt">⏭ Bài tập chưa đạt đầu tiên</button></div>
+          <div class="qrow"><button class="qexp" title="Liệt kê bài kiểm tra đã quá hạn mà chưa đạt, để báo giảng viên">📋 Bài hết hạn chưa đạt</button></div>
+          <div class="expired" hidden></div>
           ${box('autoNextTest', 'Nộp bài xong mà Đạt thì tự mở bài tập chưa đạt đầu tiên')}
           <div class="muted">Không tự nộp bài hay đăng bài. Gợi ý được lưu lại: lần sau gặp câu giống hệt sẽ dùng luôn, không tốn tiền API.</div>
         </details>
@@ -1296,6 +1384,7 @@
     $('.qfill').addEventListener('click', () => fillQuiz());
     $('.qwrite').addEventListener('click', () => writeDraft());
     $('.qnext').addEventListener('click', () => goNextTest());
+    $('.qexp').addEventListener('click', () => showExpired());
     $('.updcheck').addEventListener('click', () => {
       $('.updcheck').disabled = true;
       $('.updres').textContent = 'Đang hỏi GitHub…';
@@ -1414,6 +1503,7 @@
     $('.wrow').hidden = !w;
     $('.qwrite').disabled = Q.busy;
     $('.qnext').disabled = T.busy || S.active || !classIdFromUrl();
+    $('.qexp').disabled = T.busy || !classIdFromUrl();
   }
 
   window.addEventListener('message', e => {
@@ -1543,7 +1633,7 @@
     resumeIfNeeded();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
-  timer.every(3000, () => { buildUI(); tickVideo(); answerLmsAlert(); watchTestPass(); if (ui && !ui.panel.hidden && !S.active) render(); });
+  timer.every(3000, () => { buildUI(); tickVideo(); answerLmsAlert(); watchTestPass(); watchExpiredPage(); if (ui && !ui.panel.hidden && !S.active) render(); });
   timer.every(20000, () => cfg.keepAlive && pokeActivity());
   // Đồng hồ Worker nhịp 1 giây: nếu khựng lại lâu nghĩa là cả tab đã bị ngưng (tab ngủ hoặc máy ngủ)
   let lastBeat = Date.now();
