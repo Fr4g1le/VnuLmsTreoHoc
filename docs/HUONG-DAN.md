@@ -24,7 +24,9 @@ Mất khoảng **5 phút**. Làm lần lượt từ trên xuống, mỗi bước
 
 ### Bước 2. Giải nén
 
-Mở thư mục **Downloads**, **chuột phải** vào file ZIP vừa tải (`VnuLmsTreoHoc-vX.Y.zip` hoặc `VnuLmsTreoHoc-master.zip`; bên trong là thư mục `VnuLmsTreoHoc`) → **Extract All…** (Giải nén tất cả) → **Extract**. Ở Bước 4, chọn thư mục có file `manifest.json` bên trong.
+Mở thư mục **Downloads**, **chuột phải** vào file ZIP vừa tải (`VnuLmsTreoHoc-vX.Y.zip` hoặc `VnuLmsTreoHoc-master.zip`) → **Extract All…** (Giải nén tất cả) → **Extract**. Ở Bước 4, chọn **chính thư mục vừa giải nén** (mở ra thấy ngay file `manifest.json`).
+
+> Gặp lỗi **"Manifest file is missing or unreadable"** là do chọn nhầm thư mục: mở thư mục đó ra, thư mục nào có file `manifest.json` ngay bên trong thì chọn thư mục ấy. (Zip trước v3.12 có thêm một thư mục con `VnuLmsTreoHoc`.)
 
 Nên chuyển thư mục vừa giải nén ra chỗ cố định (ví dụ `D:\VnuLmsTreoHoc`) và **đừng xoá nó**, vì trình duyệt chạy extension trực tiếp từ thư mục này.
 
@@ -43,7 +45,7 @@ Nên chuyển thư mục vừa giải nén ra chỗ cố định (ví dụ `D:\V
 
 ### Bước 4. Chọn thư mục extension
 
-Chọn thư mục **VnuLmsTreoHoc-master** (thư mục có file `manifest.json` bên trong) rồi bấm **Select Folder** (Chọn thư mục).
+Chọn thư mục vừa giải nén, ví dụ **VnuLmsTreoHoc-v3.12** hoặc **VnuLmsTreoHoc-master** (thư mục có file `manifest.json` ngay bên trong), rồi bấm **Select Folder** (Chọn thư mục).
 
 Nếu báo lỗi "Manifest file is missing", nghĩa là bạn chọn nhầm thư mục ngoài: mở vào trong một cấp rồi chọn lại.
 
@@ -133,7 +135,7 @@ Khi có bản mới, biểu tượng extension hiện chữ **NEW**, nút "Treo 
 
 Bản cũ chưa có `CapNhat.bat` thì cập nhật bằng tay:
 
-1. Bấm **Tải bản mới** (hoặc tải ZIP như **Bước 1**). Trong zip luôn là thư mục **`VnuLmsTreoHoc`**: giải nén **đè lên** thư mục cũ.
+1. Bấm **Tải bản mới** (hoặc tải ZIP như **Bước 1**), giải nén rồi chép các file vừa giải nén **đè lên** thư mục extension cũ.
 2. Vào `brave://extensions` (hoặc `chrome://extensions`), bấm **⟳** ở thẻ "VNU LMS - Treo học".
 
 Từ **v2.9**, extension có mã ID cố định (`phjfhfofmfgcdellcpndceejfkkkjjhj`) nên **khoá AI và cài đặt không bị mất** khi cập nhật, kể cả khi giải nén ra thư mục khác.

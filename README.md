@@ -45,7 +45,7 @@ Server ghi nhận hoàn thành ngay khi rời mục, kể cả khi chưa mở ta
    - Brave: `brave://extensions`
    - Edge: `edge://extensions`
 3. Bật **Developer mode** (Chế độ dành cho nhà phát triển).
-4. Bấm **Load unpacked** và chọn thư mục vừa giải nén (thư mục có file `manifest.json`).
+4. Bấm **Load unpacked** và chọn thư mục vừa giải nén (mở ra thấy ngay file `manifest.json`). Báo lỗi *Manifest file is missing* nghĩa là chọn nhầm thư mục.
 5. Ghim biểu tượng extension: 🧩 → 📌.
 
 Muốn dùng bằng Tampermonkey thay vì extension: tạo script mới và dán nội dung `vnu-lms-treo-video.user.js`.
@@ -94,6 +94,7 @@ AI có thể sai, nhất là với câu hỏi lừa ("đáp án nào SAI") hoặ
 | `bridge.js` | Cầu nối giữa trang và background |
 | `background.js` | Gọi Claude (đã đóng gói sẵn từ `src/background.js`), mở/đóng bảng khi bấm biểu tượng |
 | `options.html`, `options.js` | Trang nhập khoá API và chọn model |
+| `tools/pack-release.py` | Đóng gói zip cho Releases: `python tools/pack-release.py` (file extension ở gốc zip, kèm bản sao trong `VnuLmsTreoHoc/` cho CapNhat.bat cũ) |
 | `CapNhat.bat` | Nhấp đúp để tải bản mới nhất từ Releases và ghi đè vào thư mục extension |
 | `vnu-lms-treo-video.user.js` | Bản dùng cho Tampermonkey (không có AI) |
 

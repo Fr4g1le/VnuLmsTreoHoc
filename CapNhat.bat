@@ -31,16 +31,22 @@ curl -fL --silent --show-error -o "%TMPD%\update.zip" "%ZIPURL%" || (
   echo Tai that bai. Kiem tra mang roi thu lai.
   goto :end
 )
-tar -xf "%TMPD%\update.zip" -C "%TMPD%" || (
+mkdir "%TMPD%\x"
+tar -xf "%TMPD%\update.zip" -C "%TMPD%\x" || (
   echo Giai nen that bai.
   goto :end
 )
-if not exist "%TMPD%\VnuLmsTreoHoc\manifest.json" (
+rem Tu v3.12, file extension nam ngay o goc zip; ban cu nam trong thu muc con VnuLmsTreoHoc
+set "FROM="
+if exist "%TMPD%\x\manifest.json" set "FROM=%TMPD%\x"
+if not defined FROM if exist "%TMPD%\x\VnuLmsTreoHoc\manifest.json" set "FROM=%TMPD%\x\VnuLmsTreoHoc"
+if not defined FROM (
   echo File tai ve khong dung dinh dang.
   goto :end
 )
 
-xcopy "%TMPD%\VnuLmsTreoHoc\*" "%~dp0." /e /y /q >nul
+rem Chi chep cac file cua extension (khong chep thu muc con)
+xcopy "%FROM%\*.*" "%~dp0." /y /q >nul
 rmdir /s /q "%TMPD%"
 echo.
 echo Da cap nhat xong.
