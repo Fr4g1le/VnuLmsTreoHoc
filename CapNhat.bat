@@ -14,25 +14,28 @@ findstr /c:"VNU LMS" manifest.json >nul || (
   goto :end
 )
 
+rem Dung curl va tar cua Windows (tar khac trong PATH, vi du cua Git, khong giai nen duoc zip)
+set "CURL=%SystemRoot%\System32\curl.exe"
+set "TAR=%SystemRoot%\System32\tar.exe"
 set "TMPD=%TEMP%\VnuLmsTreoHoc-update"
 if exist "%TMPD%" rmdir /s /q "%TMPD%"
 mkdir "%TMPD%"
 
 rem Ten file zip trong Release doi theo phien ban (VnuLmsTreoHoc-vX.Y.zip), nen hoi GitHub link file .zip cua ban moi nhat
 set "ZIPURL="
-for /f "tokens=2 delims= " %%U in ('curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/Fr4g1le/VnuLmsTreoHoc/releases/latest" ^| findstr /c:"browser_download_url" ^| findstr /i /c:".zip"') do set "ZIPURL=%%~U"
+for /f "tokens=2 delims= " %%U in ('call "%CURL%" -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/Fr4g1le/VnuLmsTreoHoc/releases/latest" ^| findstr /c:"browser_download_url" ^| findstr /i /c:".zip"') do set "ZIPURL=%%~U"
 if not defined ZIPURL (
   echo Khong tim thay ban moi tren GitHub. Kiem tra mang roi thu lai.
   goto :end
 )
 
 echo Dang tai ban moi nhat...
-curl -fL --silent --show-error -o "%TMPD%\update.zip" "%ZIPURL%" || (
+"%CURL%" -fL --silent --show-error -o "%TMPD%\update.zip" "%ZIPURL%" || (
   echo Tai that bai. Kiem tra mang roi thu lai.
   goto :end
 )
 mkdir "%TMPD%\x"
-tar -xf "%TMPD%\update.zip" -C "%TMPD%\x" || (
+"%TAR%" -xf "%TMPD%\update.zip" -C "%TMPD%\x" || (
   echo Giai nen that bai.
   goto :end
 )
