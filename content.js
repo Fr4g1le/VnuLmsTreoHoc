@@ -110,8 +110,9 @@
   function tickVideo() {
     for (const m of document.querySelectorAll('video, audio')) if (cfg.muteVideo && m.volume !== 0) m.volume = 0;
     for (const v of document.querySelectorAll('video')) {
+      // Chỉ tự phát lại khi đang tự học (không tạm dừng): bạn tự dừng video lúc không tự học thì để yên.
       // Hết video thì thôi: xem lại đoạn cũ không được LMS tính thêm giờ
-      if (!v.ended && cfg.resumeVideo && v.paused && v.readyState > 0) playVideo(v);
+      if (S.active && !S.paused && !v.ended && cfg.resumeVideo && v.paused && v.readyState > 0) playVideo(v);
     }
   }
   function playVideo(v) {
@@ -125,7 +126,7 @@
   }
 
   // ---------- 2. Tự học theo mục lục ----------
-  const S = { active: false, phase: '', course: null, queue: [], parking: null, current: null, endsAt: 0, logs: [] };
+  const S = { active: false, paused: false, phase: '', course: null, queue: [], parking: null, current: null, endsAt: 0, logs: [] };
 
   function log(msg) {
     S.logs.unshift(new Date().toLocaleTimeString('vi-VN') + '  ' + msg);
@@ -279,8 +280,13 @@
   // PDF, bài đọc…: LMS tính theo thời gian mở mục, nên chỉ cần chờ đủ giờ.
   async function holdClock(item) {
     S.endsAt = Date.now() + item.needMs;
+    let last = Date.now();
     while (Date.now() < S.endsAt) {
       if (!S.active) return false;
+      // Đang tạm dừng: dời giờ kết thúc lùi theo thời gian dừng, để thời gian còn lại đứng yên
+      const now = Date.now();
+      if (S.paused) S.endsAt += now - last;
+      last = now;
       render();
       await sleep(1000);
     }
@@ -326,6 +332,7 @@
         if (gained < needSec) log('Video đã hết mà có thể chưa đủ giờ; sẽ kiểm tra với server.');
         break;
       }
+      if (S.paused) lastMove = Date.now(); // tạm dừng: video đứng yên là đúng, không phát lại
       if (Date.now() - lastMove > 60000 && !stallLogged) {
         stallLogged = true;
         log('Video đứng yên hơn 1 phút (bị dừng?), đang chờ phát lại – chưa rời mục.');
@@ -368,7 +375,18 @@
     log('Đã mở tab "Tiến trình học tập" để cập nhật.');
   }
 
-  const saveRun = active => writeJSON(LS_RUN, active ? { active: true, classId: S.course && S.course.classId, url: location.href } : {});
+  const saveRun = active => writeJSON(LS_RUN, active ? { active: true, paused: S.paused, classId: S.course && S.course.classId, url: location.href } : {});
+
+  // Tạm dừng: giữ nguyên mục đang học và thời gian còn lại, dừng video, không mở mục mới; Tiếp tục thì chạy tiếp.
+  function togglePause() {
+    if (!S.active) return;
+    S.paused = !S.paused;
+    const v = contentVideo();
+    if (S.paused) { if (v && !v.paused) v.pause(); log('⏸ Tạm dừng tự học.'); }
+    else { if (v && v.paused && !v.ended) playVideo(v); log('▶ Tiếp tục tự học.'); }
+    saveRun(true);
+    render();
+  }
 
   async function runLoop() {
     if (S.active) return;
@@ -395,6 +413,7 @@
           continue;
         }
         S.narrow = false;
+        if (S.paused) { await sleep(1000); continue; }
         // Chạy qua đêm: mục vừa tới ngày mở thì đưa vào, mục vừa hết hạn thì khoá lại
         for (const q of S.queue) {
           if (q.status === 'locked' && !lockReason(q)) q.status = 'pending';
@@ -433,6 +452,7 @@
 
   function stop() {
     S.active = false;
+    S.paused = false;
     saveRun(false);
     log('Đã dừng.');
   }
@@ -1185,6 +1205,8 @@
     .row button.primary.stop { background: #e5544b; border-color: #e5544b; color: #fff; }
     .row button:disabled { opacity: .4; cursor: default; }
     .row button.mute { flex: 0 0 auto; white-space: nowrap; }
+    .row button[hidden] { display: none; }
+    .row button.pause.on { background: #fde7b0; border-color: #fde7b0; color: #5c3b06; }
     .row button.mute.on { background: #fde7b0; border-color: #fde7b0; color: #5c3b06; }
 
     details { border-top: 1px solid var(--line); padding: 0 16px; }
@@ -1279,7 +1301,7 @@
         <section class="note update"></section>
         <section class="note sleep"></section>
         <section class="status"></section>
-        <div class="row"><button class="primary go"></button><button class="scan">↻ Quét lại</button><button class="mute"></button></div>
+        <div class="row"><button class="primary go"></button><button class="pause" hidden></button><button class="scan">↻ Quét lại</button><button class="mute"></button></div>
         <details class="quiz" open><summary>Trợ lý làm bài (AI)</summary>
           <div class="qstatus"></div>
           <div class="qrow"><button class="qsuggest">🤖 Gợi ý đáp án</button><button class="qfill">✍ Điền gợi ý</button><button class="qkey">⚙ Khoá API</button></div>
@@ -1372,6 +1394,7 @@
     $('header').addEventListener('pointerdown', e => startDrag(e, $('header')));
     $('.x').addEventListener('click', () => togglePanel(false));
     $('.go').addEventListener('click', () => (S.active ? stop() : runLoop()));
+    $('.pause').addEventListener('click', () => togglePause());
     $('.scan').addEventListener('click', () => scan().catch(e => log('Lỗi: ' + e.message)));
     $('.mute').addEventListener('click', () => {
       cfg.muteVideo = !cfg.muteVideo;
@@ -1437,7 +1460,7 @@
     const { $ } = ui;
     const remaining = S.active && S.endsAt ? S.endsAt - Date.now() : 0;
     ui.fab.textContent = (showUpdate() ? '⬆ ' : '') + (Z.reason ? '💤 ' : '') + (cfg.muteVideo ? '🔇 ' : '') +
-      (S.active ? `Treo ▶ ${remaining > 0 ? fmt(remaining) : '…'}` : 'Treo học');
+      (S.active ? `Treo ${S.paused ? '⏸' : '▶'} ${remaining > 0 ? fmt(remaining) : '…'}` : 'Treo học');
     ui.fab.classList.toggle('run', S.active);
     if (ui.panel.hidden) return;
     renderUpdate();
@@ -1447,6 +1470,12 @@
     go.textContent = S.active ? '■ Dừng' : '▶ Bắt đầu tự học';
     go.classList.toggle('stop', S.active);
     $('.scan').disabled = S.active || !!S.phase;
+    // Đang tự học: nút Quét lại nhường chỗ cho Tạm dừng / Tiếp tục
+    $('.scan').hidden = S.active;
+    const pause = $('.pause');
+    pause.hidden = !S.active;
+    pause.textContent = S.paused ? '▶ Tiếp tục' : '⏸ Tạm dừng';
+    pause.classList.toggle('on', S.paused);
     const mute = $('.mute');
     mute.textContent = cfg.muteVideo ? '🔇 Đã tắt tiếng' : '🔊 Tắt tiếng';
     mute.title = cfg.muteVideo ? 'Bấm để bật lại tiếng video' : 'Bấm để tắt tiếng video';
@@ -1459,7 +1488,7 @@
     const cur = S.current;
     $('.status').innerHTML = `
       ${warn.map(w => `<div class="warn">${esc(w)}</div>`).join('')}
-      <div class="muted">${S.active ? '● Đang chạy' : 'Đã dừng'}${S.phase ? ' · ' + esc(S.phase) : ''}</div>
+      <div class="muted">${S.active ? (S.paused ? '⏸ Đang tạm dừng (không tính giờ, video không tự phát)' : '● Đang chạy') : 'Đã dừng'}${S.phase ? ' · ' + esc(S.phase) : ''}</div>
       ${cur ? `<div class="cur">${esc(cur.title)}</div>
         <div class="muted">${esc(KIND_LABEL[cur.kind] || '')}${cur.mincore ? ` · yêu cầu ${cur.mincore} phút, đã có ${(cur.learnTime || 0).toFixed(1)}` : ''}</div>
         ${remaining > 0 ? `<div class="time">còn ${fmt(remaining)}</div>` : ''}` : ''}
@@ -1616,7 +1645,8 @@
     if (!run.active) return;
     if (classIdFromUrl() && classIdFromUrl() === run.classId) {
       for (let i = 0; i < 60 && !document.querySelector('.__lesson-name'); i++) await sleep(1000);
-      log('Tiếp tục tự học sau khi tải lại trang.');
+      log('Tiếp tục tự học sau khi tải lại trang.' + (run.paused ? ' (đang tạm dừng)' : ''));
+      S.paused = !!run.paused;
       runLoop();
     } else if (run.url) {
       log('Đang quay lại lớp học để tiếp tục…');

@@ -18,6 +18,7 @@ Extension cho Chrome / Brave / Edge giúp treo máy học trên [LMS VNU](https:
 - **Tự xác nhận "Bạn có đang học tập không ?"** ngay khi hộp thoại hiện ra.
 - **Chống dừng khi đổi tab** và tự phát lại video khi bị dừng.
 - **Cập nhật một chạm:** nhấp đúp `CapNhat.bat` trong thư mục extension; extension tự khởi động lại và trang LMS tự tải lại.
+- **Tạm dừng tự học:** khi đang chạy, nút **⏸ Tạm dừng** giữ nguyên mục đang học và thời gian còn lại (không tính giờ lúc dừng, video không tự phát); bấm **▶ Tiếp tục** để chạy tiếp. Video chỉ tự phát lại khi đang tự học, nên lúc không tự học bạn dừng video thì video đứng yên.
 - **Tắt tiếng nhanh** bằng một nút, để làm việc khác trong lúc treo.
 - **Bảng điều khiển:** chọn loại mục (video, PDF, bài đọc…), chọn bài học muốn chạy, xem danh sách, thời gian còn lại và nhật ký. Giao diện chọn được trong **Cài đặt**: Xanh đậm (theo sáng/tối của máy), Trắng hoặc Tối. Muốn đặt bảng ở góc khác thì kéo nút **Treo học** (hoặc đầu bảng) sang góc đó; bảng tự dính vào góc gần nhất và nhớ vị trí.
 - Chế độ tự học không bao giờ mở bài kiểm tra / trắc nghiệm.
