@@ -482,43 +482,42 @@
   // Bản trước 3.9 có thể đã nhớ nhầm (đọc bảng Kết quả của bài trước): xoá một lần
   if (readJSON('vnuTreoTestPassedV', 0) < 2) { writeJSON(LS_PASSED, {}); writeJSON('vnuTreoTestPassedV', 2); }
   const T = { busy: false };
+  const seenPassed = title => Object.keys(readJSON(LS_PASSED, {})).some(k => k.startsWith('head:' + norm(title)));
 
+  // Loại của từng mục được nhớ theo id (đọc loại tốn một lượt gọi API mỗi mục). Mục lục thì đọc mới mỗi lần:
+  // lớp hay thêm bài mới (ví dụ Lesson 4 mở sau), bản cũ nhớ cả danh sách bài nên không thấy các bài thêm sau.
   async function loadTests(classId) {
     const cache = readJSON(LS_TESTS, {});
-    let tests = cache[classId];
-    if (!tests) {
-      const tree = await api('LmsClassTopic/searchFrTop1?classId=' + classId + '&key=');
-      const leaves = [], seen = {};
-      const walk = nodes => {
-        for (const n of nodes || []) {
-          if (n.isFolder) { walk(n.childs); continue; }
-          const key = norm(n.title);
-          seen[key] = key in seen ? seen[key] + 1 : 0;
-          leaves.push({ id: n.id, title: n.title, dup: seen[key] });
-        }
-      };
-      walk(tree);
-      tests = [];
-      for (let i = 0; i < leaves.length; i += 8) {
-        quizStatus(`Đang tìm các bài tập trong lớp (${Math.min(i + 8, leaves.length)}/${leaves.length} mục)…`);
-        const ds = await Promise.all(leaves.slice(i, i + 8).map(l => detail(l.id)));
-        ds.forEach((d, j) => {
-          if (kindOf(d) !== 'test') return;
-          tests.push(Object.assign(leaves[i + j], {
-            opensAt: d.startDate ? new Date(d.startDate).getTime() : 0,
-            closesAt: d.endDate ? new Date(d.endDate).getTime() : 0,
-          }));
-        });
+    let c = cache[classId];
+    if (!c || Array.isArray(c) || Date.now() - (c.at || 0) > 86400000) c = { at: Date.now(), kinds: {} };
+    const tree = await api('LmsClassTopic/searchFrTop1?classId=' + classId + '&key=');
+    const leaves = [], seen = {};
+    const walk = nodes => {
+      for (const n of nodes || []) {
+        if (n.isFolder) { walk(n.childs); continue; }
+        const key = norm(n.title);
+        seen[key] = key in seen ? seen[key] + 1 : 0;
+        leaves.push({ id: n.id, title: n.title, dup: seen[key] });
       }
-      cache[classId] = tests;
-      writeJSON(LS_TESTS, cache);
+    };
+    walk(tree);
+    const unknown = leaves.filter(l => !(l.id in c.kinds));
+    for (let i = 0; i < unknown.length; i += 8) {
+      quizStatus(`Đang đọc các bài tập trong lớp (${Math.min(i + 8, unknown.length)}/${unknown.length} mục)…`);
+      const part = unknown.slice(i, i + 8);
+      const ds = await Promise.all(part.map(l => detail(l.id)));
+      ds.forEach((d, j) => {
+        c.kinds[part[j].id] = kindOf(d) !== 'test' ? 0
+          : [d.startDate ? new Date(d.startDate).getTime() : 0, d.endDate ? new Date(d.endDate).getTime() : 0];
+      });
     }
+    if (unknown.length || cache[classId] !== c) { cache[classId] = c; writeJSON(LS_TESTS, cache); }
+    const tests = leaves.filter(l => c.kinds[l.id]).map(l => Object.assign(l, { opensAt: c.kinds[l.id][0], closesAt: c.kinds[l.id][1] }));
     // "Đã đạt" lấy theo bảng Kết quả trên trang bài (dòng "Đạt"), không theo dấu ✓ của mục lục: có bài LMS đánh ✓
     // mà bảng Kết quả vẫn trống. Bài đã thấy "Đạt" được nhớ lại để lần sau không phải mở lại.
-    const heads = Object.keys(readJSON(LS_PASSED, {})).filter(k => k.startsWith('head:')).map(k => k.slice(5));
     const learning = await loadLearning(classId);
     return tests.map(t => Object.assign({}, t, {
-      done: heads.some(h => h.startsWith(norm(t.title))),
+      done: seenPassed(t.title),
       lmsPassed: !!(learning[t.id] && (learning[t.id].isPassed || learning[t.id].isFinish)),
     }));
   }
@@ -705,7 +704,7 @@
     const passed = readJSON(LS_PASSED, {});
     passed['head:' + r.head] = true;
     writeJSON(LS_PASSED, passed);
-    if (cfg.autoNextTest) goNextTest('Bài vừa nộp đã Đạt. ');
+    if (cfg.autoNextTest) goNextNeed('Bài vừa nộp đã Đạt. ').then(ok => ok || goNextTest('Bài vừa nộp đã Đạt. '));
   }
 
   // ---------- Mục bị khoá vì phải học xong mục khác trước ----------
@@ -861,13 +860,14 @@
     }
     const items = [...map.values()].sort((a, b) => (a.leaf ? a.leaf.idx : 1e9) - (b.leaf ? b.leaf.idx : 1e9));
     await Promise.all(items.filter(x => x.leaf).map(async x => { try { x.kind = kindOf(await detail(x.leaf.id)); } catch (e) {} }));
-    items.forEach(x => { x.done = leafDone(st, x.leaf); });
+    // LMS có lúc chưa ghi nhận xong ngay dù bảng Kết quả đã có dòng Đạt: bài đã thấy Đạt cũng tính là xong
+    items.forEach(x => { x.passed = !leafDone(st, x.leaf) && seenPassed(x.leaf ? x.leaf.title : x.text); x.done = leafDone(st, x.leaf) || x.passed; });
     const left = items.filter(x => !x.done);
     const order = l => { const f = findLeaf(st, l.title); return f ? f.idx : 1e9; };
     locks.sort((a, b) => (norm(b.title) === norm(focus || '')) - (norm(a.title) === norm(focus || '')) || order(a) - order(b));
     ui.lockItems = items;
     const row = x => `<li class="${x.done ? 'done' : ''}">${x.done ? '✓' : '○'} ${esc(x.text)}
-        <small>${x.kind ? '· ' + esc(KIND_LABEL[x.kind] || '') : x.leaf ? '' : '· không thấy trong mục lục'}${x.unlocks.length > 1 ? ` · mở khoá ${x.unlocks.length} bài` : ''}</small>
+        <small>${x.passed ? '· đã Đạt ' : ''}${x.kind ? '· ' + esc(KIND_LABEL[x.kind] || '') : x.leaf ? '' : '· không thấy trong mục lục'}${x.unlocks.length > 1 ? ` · mở khoá ${x.unlocks.length} bài` : ''}</small>
         ${x.done ? '' : `<button data-open="${items.indexOf(x)}">Mở</button>`}</li>`;
     const nTests = left.filter(x => x.kind === 'test').length;
     box.innerHTML = `<div class="muted"><b>${locks.length}</b> mục đang khoá. Còn <b>${left.length}</b> mục phải xong trước (theo thứ tự mục lục):</div>
@@ -882,6 +882,42 @@
       <div class="muted">${nTests ? `${nTests} mục là bài kiểm tra/bài tập: bạn tự làm (dùng Trợ lý AI). ` : ''}Video, bài đọc: "Bắt đầu tự học" sẽ học các mục này trước.
         Ghi nhận theo lần mở gần nhất, mục mở được rồi sẽ tự biến mất.</div>
       <div class="qrow"><button class="lkscan">🔍 Kiểm tra lại cả lớp</button><button class="lkhide">Ẩn</button></div>`;
+  }
+
+  // Vừa Đạt một mục nằm trong danh sách điều kiện của bài đang khoá: mở mục tiếp theo của danh sách đó (theo mục lục);
+  // làm đủ rồi thì mở chính bài đang khoá. Trả về false nếu mục đang mở không thuộc danh sách nào.
+  async function goNextNeed(reason) {
+    const classId = classIdFromUrl();
+    if (!classId || T.busy || S.active) return false;
+    const head = viewHead();
+    const lock = Object.values(classLocks(classId)).find(lk => lk.needs.some(n => head.startsWith(norm(n))));
+    if (!lock) return false;
+    T.busy = true;
+    render();
+    try {
+      const st = await courseState(classId, true);
+      const rest = lock.needs.map(n => findLeaf(st, n))
+        .filter(l => l && !head.startsWith(norm(l.title)) && !leafDone(st, l) && !seenPassed(l.title))
+        .sort((a, b) => a.idx - b.idx);
+      if (!rest.length) {
+        quizStatus(`${reason}Đã làm đủ các mục để mở khoá ${lock.title}, đang mở bài đó…`, true);
+        log('🔓 Đủ điều kiện, mở: ' + lock.title);
+        await openItem(findLeaf(st, lock.title) || { title: lock.title, dup: 0 });
+      } else {
+        log(`⏭ Mục tiếp theo để mở khoá ${lock.title}: ${rest[0].title}`);
+        const ok = await openItem(rest[0]);
+        quizStatus(ok ? `${reason}Đã mở mục tiếp theo cần để mở khoá ${lock.title}: ${rest[0].title} (còn ${rest.length} mục).`
+          : 'Không mở được: ' + rest[0].title + '. Hãy tìm trong mục lục bên trái.', true);
+      }
+      return true;
+    } catch (e) {
+      quizStatus('Lỗi: ' + e.message, true);
+      return true;
+    } finally {
+      T.busy = false;
+      render();
+      if (ui && !ui.$('.locks').hidden) showLocks(lock.title);
+    }
   }
 
   async function openNeed(i) {
@@ -1665,7 +1701,7 @@
           <div class="expired" hidden></div>
           <div class="qrow"><button class="qlock" title="Bài nào đang khoá vì phải học xong mục khác trước, và cần làm những mục nào">🔒 Bài bị khoá cần học trước</button></div>
           <div class="locks" hidden></div>
-          ${box('autoNextTest', 'Nộp bài xong mà Đạt thì tự mở bài tập chưa đạt đầu tiên')}
+          ${box('autoNextTest', 'Nộp bài xong mà Đạt thì tự mở bài tiếp theo (mục tiếp theo cần để mở khoá, nếu có; không thì bài tập chưa đạt đầu tiên)')}
           <div class="muted">Không tự nộp bài hay đăng bài. Gợi ý được lưu lại: lần sau gặp câu giống hệt sẽ dùng luôn, không tốn tiền API.</div>
         </details>
         <details class="cfg"><summary>Cài đặt</summary>
