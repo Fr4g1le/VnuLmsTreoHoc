@@ -720,45 +720,91 @@
   }
 
   // ---------- Tải file nghe ----------
-  // Các file audio đang có trên trang (bỏ trùng). Lưu về máy bằng link tải tạm, giữ tên file gốc.
-  const audioSources = () => [...new Set([...document.querySelectorAll('audio')]
-    .map(a => a.currentSrc || a.src || (a.querySelector('source') || {}).src || '')
-    .filter(src => /^https?:/.test(src)))];
-
-  function audioFileName(src, type, i) {
-    let name = '';
-    try { name = decodeURIComponent(new URL(src).pathname.split('/').pop()); } catch (e) {}
-    name = name.replace(/[\\/:*?"<>|]+/g, '_').trim();
-    if (!name) name = 'bai-nghe' + (i ? '-' + (i + 1) : '');
-    if (!/\.[a-z0-9]{2,4}$/i.test(name)) name += '.' + ((type.split('/')[1] || 'mp3').replace('mpeg', 'mp3').replace(/[^a-z0-9]/gi, ''));
-    return name;
+  // Các file audio thật trên trang, bỏ trùng, kèm số câu dùng file đó. Câu thả xuống (pd) có thẻ audio ẩn với địa chỉ
+  // trống: trình duyệt hiểu thành địa chỉ trang, nên chỉ lấy thẻ có thuộc tính src khác rỗng và trỏ tới một file.
+  function audioSources() {
+    const out = [];
+    for (const el of document.querySelectorAll('audio')) {
+      const raw = el.getAttribute('src') || (el.querySelector('source[src]') || { getAttribute: () => '' }).getAttribute('src');
+      if (!raw || !raw.trim()) continue;
+      const src = el.currentSrc || el.src || (el.querySelector('source') || {}).src || '';
+      let path = '';
+      try { path = new URL(src).pathname; } catch (e) { continue; }
+      if (!/^https?:/.test(src) || path.endsWith('/') || src.split('#')[0] === location.href.split('#')[0]) continue;
+      // Đuôi rõ ràng không phải âm thanh (trang, script, ảnh…) thì bỏ; không có đuôi thì vẫn thử, lúc tải sẽ kiểm tra lại
+      if (/\.(html?|php|aspx?|js|css|json|png|jpe?g|gif|svg)$/i.test(path)) continue;
+      if (out.some(x => x.src === src)) continue;
+      const num = el.closest('.question-item') && el.closest('.question-item').querySelector('.question-num');
+      const n = ((num && num.innerText.match(/\d+\s*\.\s*\d+|\d+/)) || [''])[0].replace(/\s+/g, '');
+      out.push({ src, label: n ? 'Cau-' + n : '' });
+    }
+    return out;
   }
 
-  async function downloadAudio() {
-    const srcs = audioSources();
-    if (!srcs.length) return quizStatus('Trang này không có file nghe.');
-    let ok = 0;
-    for (const [i, src] of srcs.entries()) {
-      quizStatus(`Đang tải file nghe ${i + 1}/${srcs.length}…`);
-      try {
-        const res = await fetch(src, { credentials: 'include' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = audioFileName(src, blob.type || '', i);
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
-        log('⬇ Đã tải file nghe: ' + a.download);
-        ok++;
-      } catch (e) {
-        log('Không tải được file nghe: ' + e.message);
-      }
+  function audioFileName(item, type, i) {
+    let name = '';
+    try { name = decodeURIComponent(new URL(item.src).pathname.split('/').pop()); } catch (e) {}
+    name = name.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'bai-nghe-' + (i + 1);
+    if (!/\.[a-z0-9]{2,4}$/i.test(name)) name += '.' + ((type.split('/')[1] || 'mp3').replace('mpeg', 'mp3').replace(/[^a-z0-9]/gi, ''));
+    return (item.label ? item.label + ' - ' : '') + name;
+  }
+
+  // Tải một file; chỉ lưu khi đúng là audio/video (không lưu nhầm trang HTML)
+  async function downloadOne(item, i) {
+    try {
+      const res = await fetch(item.src, { credentials: 'include' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      if (blob.type && !/^(audio|video)\/|octet-stream/.test(blob.type)) throw new Error('không phải file âm thanh (' + blob.type + ')');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = audioFileName(item, blob.type || '', i);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      log('⬇ Đã tải file nghe: ' + a.download);
+      return true;
+    } catch (e) {
+      log('Không tải được file nghe ' + (item.label || i + 1) + ': ' + e.message);
+      return false;
     }
-    quizStatus(ok ? `Đã tải ${ok}/${srcs.length} file nghe vào thư mục Tải xuống (Downloads).` : 'Không tải được file nghe, thử lại sau.');
+  }
+
+  // Một file: tải luôn. Nhiều file: mở danh sách, mỗi file một nút tải riêng (mỗi lần bấm một file nên trình duyệt
+  // không hỏi "cho phép tải nhiều tệp"), kèm "Tải tất cả" (trình duyệt có thể hỏi một lần, hãy bấm Cho phép).
+  async function downloadAudio() {
+    const items = audioSources();
+    if (!items.length) return quizStatus('Trang này không có file nghe.');
+    if (items.length === 1) {
+      quizStatus('Đang tải file nghe…', true);
+      const ok = await downloadOne(items[0], 0);
+      return quizStatus(ok ? 'Đã tải file nghe vào thư mục Tải xuống (Downloads).' : 'Không tải được file nghe, xem Nhật ký.', true);
+    }
+    const box = ui.$('.dllist');
+    if (!box.hidden) { box.hidden = true; return; }
+    box.innerHTML = items.map((it, i) => {
+      let base = '';
+      try { base = decodeURIComponent(new URL(it.src).pathname.split('/').pop()); } catch (e) {}
+      return `<div class="dlrow"><span>${esc(it.label ? it.label.replace('Cau-', 'Câu ') : 'File ' + (i + 1))} · <small>${esc(base)}</small></span>
+        <button data-i="${i}">⬇</button></div>`;
+    }).join('') + '<div class="qrow"><button class="dlall">⬇ Tải tất cả</button></div>';
+    box.hidden = false;
+    box.querySelectorAll('button[data-i]').forEach(b => b.addEventListener('click', async () => {
+      b.disabled = true;
+      b.textContent = (await downloadOne(items[+b.dataset.i], +b.dataset.i)) ? '✓' : '✗';
+    }));
+    box.querySelector('.dlall').addEventListener('click', async () => {
+      let ok = 0;
+      for (const [i, it] of items.entries()) {
+        quizStatus(`Đang tải file nghe ${i + 1}/${items.length}…`, true);
+        if (await downloadOne(it, i)) ok++;
+        await sleep(400);
+      }
+      quizStatus(`Đã tải ${ok}/${items.length} file nghe. Nếu trình duyệt hỏi "tải nhiều tệp", hãy bấm Cho phép.`, true);
+    });
+    quizStatus(`Trang có ${items.length} file nghe: bấm ⬇ ở từng dòng, hoặc "Tải tất cả".`, true);
   }
 
   // Ảnh trong đề (tối đa 8 ảnh, mỗi ảnh dưới 4 MB). Ảnh không tải được thì bỏ qua.
@@ -1288,7 +1334,11 @@
     .qrow button:hover:not(:disabled) { border-color: var(--ai); }
     .qrow button.qsuggest { background: var(--ai); border-color: var(--ai); color: #fff; font-weight: 600; }
     .qrow button.qkey { flex: 0 0 auto; }
-    .expired[hidden] { display: none; }
+    .expired[hidden], .dllist[hidden] { display: none; }
+    .dllist { margin: 0 0 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+    .dlrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }
+    .dlrow small { color: var(--sub); word-break: break-all; }
+    .dlrow button { flex: 0 0 auto; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--wash); color: var(--text); cursor: pointer; }
     .expired { margin: 4px 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
     .expired ol { max-height: 180px; padding-left: 18px; list-style: decimal; }
     .expired li { padding: 2px 0; }
@@ -1348,6 +1398,7 @@
           <div class="qstatus"></div>
           <div class="qrow"><button class="qsuggest">🤖 Gợi ý đáp án</button><button class="qfill">✍ Điền gợi ý</button><button class="qkey">⚙ Khoá API</button></div>
           <div class="qrow"><button class="qdl" hidden title="Lưu file audio của bài về máy (thư mục Tải xuống)">⬇ Tải file nghe</button></div>
+          <div class="dllist" hidden></div>
           <div class="qrow wrow" hidden><input class="qidea" placeholder="Ý bạn muốn viết (không bắt buộc)"><button class="qwrite">📝 Viết nháp</button></div>
           <div class="qrow"><button class="qnext" title="Mở bài kiểm tra đầu tiên (tính từ đầu mục lục) mà bảng Kết quả chưa có dòng Đạt">⏭ Bài tập chưa đạt đầu tiên</button></div>
           <div class="qrow"><button class="qexp" title="Liệt kê bài kiểm tra đã quá hạn mà chưa đạt, để báo giảng viên">📋 Bài hết hạn chưa đạt</button></div>
@@ -1576,6 +1627,7 @@
     $('.wrow').hidden = !w;
     const nAudio = audioSources().length;
     $('.qdl').hidden = !nAudio;
+    if (!nAudio) $('.dllist').hidden = true;
     $('.qdl').textContent = nAudio > 1 ? `⬇ Tải ${nAudio} file nghe` : '⬇ Tải file nghe';
     $('.qwrite').disabled = Q.busy;
     $('.qnext').disabled = T.busy || S.active || !classIdFromUrl();
