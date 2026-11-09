@@ -719,6 +719,48 @@
     return out;
   }
 
+  // ---------- Tải file nghe ----------
+  // Các file audio đang có trên trang (bỏ trùng). Lưu về máy bằng link tải tạm, giữ tên file gốc.
+  const audioSources = () => [...new Set([...document.querySelectorAll('audio')]
+    .map(a => a.currentSrc || a.src || (a.querySelector('source') || {}).src || '')
+    .filter(src => /^https?:/.test(src)))];
+
+  function audioFileName(src, type, i) {
+    let name = '';
+    try { name = decodeURIComponent(new URL(src).pathname.split('/').pop()); } catch (e) {}
+    name = name.replace(/[\\/:*?"<>|]+/g, '_').trim();
+    if (!name) name = 'bai-nghe' + (i ? '-' + (i + 1) : '');
+    if (!/\.[a-z0-9]{2,4}$/i.test(name)) name += '.' + ((type.split('/')[1] || 'mp3').replace('mpeg', 'mp3').replace(/[^a-z0-9]/gi, ''));
+    return name;
+  }
+
+  async function downloadAudio() {
+    const srcs = audioSources();
+    if (!srcs.length) return quizStatus('Trang này không có file nghe.');
+    let ok = 0;
+    for (const [i, src] of srcs.entries()) {
+      quizStatus(`Đang tải file nghe ${i + 1}/${srcs.length}…`);
+      try {
+        const res = await fetch(src, { credentials: 'include' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = audioFileName(src, blob.type || '', i);
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        log('⬇ Đã tải file nghe: ' + a.download);
+        ok++;
+      } catch (e) {
+        log('Không tải được file nghe: ' + e.message);
+      }
+    }
+    quizStatus(ok ? `Đã tải ${ok}/${srcs.length} file nghe vào thư mục Tải xuống (Downloads).` : 'Không tải được file nghe, thử lại sau.');
+  }
+
   // Ảnh trong đề (tối đa 8 ảnh, mỗi ảnh dưới 4 MB). Ảnh không tải được thì bỏ qua.
   async function imagesPayload(qs) {
     const out = [];
@@ -1205,7 +1247,7 @@
     .row button.primary.stop { background: #e5544b; border-color: #e5544b; color: #fff; }
     .row button:disabled { opacity: .4; cursor: default; }
     .row button.mute { flex: 0 0 auto; white-space: nowrap; }
-    .row button[hidden] { display: none; }
+    .row button[hidden], .qrow button[hidden] { display: none; }
     .row button.pause.on { background: #fde7b0; border-color: #fde7b0; color: #5c3b06; }
     .row button.mute.on { background: #fde7b0; border-color: #fde7b0; color: #5c3b06; }
 
@@ -1305,6 +1347,7 @@
         <details class="quiz" open><summary>Trợ lý làm bài (AI)</summary>
           <div class="qstatus"></div>
           <div class="qrow"><button class="qsuggest">🤖 Gợi ý đáp án</button><button class="qfill">✍ Điền gợi ý</button><button class="qkey">⚙ Khoá API</button></div>
+          <div class="qrow"><button class="qdl" hidden title="Lưu file audio của bài về máy (thư mục Tải xuống)">⬇ Tải file nghe</button></div>
           <div class="qrow wrow" hidden><input class="qidea" placeholder="Ý bạn muốn viết (không bắt buộc)"><button class="qwrite">📝 Viết nháp</button></div>
           <div class="qrow"><button class="qnext" title="Mở bài kiểm tra đầu tiên (tính từ đầu mục lục) mà bảng Kết quả chưa có dòng Đạt">⏭ Bài tập chưa đạt đầu tiên</button></div>
           <div class="qrow"><button class="qexp" title="Liệt kê bài kiểm tra đã quá hạn mà chưa đạt, để báo giảng viên">📋 Bài hết hạn chưa đạt</button></div>
@@ -1406,6 +1449,7 @@
     $('.qsuggest').addEventListener('click', () => suggestQuiz());
     $('.qfill').addEventListener('click', () => fillQuiz());
     $('.qwrite').addEventListener('click', () => writeDraft());
+    $('.qdl').addEventListener('click', () => downloadAudio());
     $('.qnext').addEventListener('click', () => goNextTest());
     $('.qexp').addEventListener('click', () => showExpired());
     $('.updcheck').addEventListener('click', () => {
@@ -1530,6 +1574,9 @@
     $('.qsuggest').disabled = Q.busy || !found.length;
     $('.qfill').disabled = Q.busy || !found.length;
     $('.wrow').hidden = !w;
+    const nAudio = audioSources().length;
+    $('.qdl').hidden = !nAudio;
+    $('.qdl').textContent = nAudio > 1 ? `⬇ Tải ${nAudio} file nghe` : '⬇ Tải file nghe';
     $('.qwrite').disabled = Q.busy;
     $('.qnext').disabled = T.busy || S.active || !classIdFromUrl();
     $('.qexp').disabled = T.busy || !classIdFromUrl();
