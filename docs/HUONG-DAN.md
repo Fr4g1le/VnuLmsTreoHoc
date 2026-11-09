@@ -125,6 +125,8 @@ Muốn chính xác hơn có thể chọn **Anthropic Claude** (trả phí, tạo
 
 AI có thể sai, nhất là câu hỏi kiểu "đáp án nào SAI". Gợi ý được lưu lại: làm lại bài gặp câu giống hệt sẽ dùng luôn, không tốn lượt AI.
 
+
+**Bài bị khoá?** Nếu mở bài (ví dụ Mini-test) thấy dòng đỏ **"Cần hoàn thành các nội dung sau để tiếp tục"**, bảng Treo học tự hiện danh sách mục cần làm trước. Bấm **Mở** ở từng mục, hoặc **▶ Mở mục đầu tiên chưa xong**. Muốn biết cả lớp còn bài nào bị khoá: bấm **🔒 Bài bị khoá cần học trước** → **🔍 Kiểm tra cả lớp**.
 ---
 
 ## Cập nhật bản mới

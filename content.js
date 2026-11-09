@@ -222,6 +222,9 @@
 
       S.course = { classId, folders, total: leaves.length, done: leaves.filter(done).length };
       S.queue = queue;
+      const lockNeeds = Object.values(classLocks(classId)).flatMap(l => l.needs);
+      const first = lockNeeds.length ? prioritizeNeeds(lockNeeds) : 0;
+      if (first) log(`Ưu tiên ${first} mục là điều kiện mở khoá bài khác (xem "🔒 Bài bị khoá").`);
       log(`Quét xong: ${queue.filter(q => q.status === 'pending').length} mục cần học, ${S.course.done}/${leaves.length} mục đã hoàn thành.`);
     } finally {
       S.phase = '';
@@ -351,6 +354,10 @@
       item.status = 'done';
       S.course.done++;
       log('✓ Hoàn thành: ' + item.title);
+      // Mục đang chờ mục này thì thử lại (tối đa 3 lần)
+      for (const q of S.queue) {
+        if (q.status === 'blocked' && q.needs && matchNeed(q.needs, item.title) && (q.blockTries = (q.blockTries || 0) + 1) <= 3) q.status = 'pending';
+      }
     } else if (item.retries < 2) {
       item.retries++;
       item.needMs = Math.max(60000, needMs(item));
@@ -434,6 +441,17 @@
         }
         if (!item) continue;
         if (!ok) { item.status = 'error'; log('Không tìm thấy/mở được mục: ' + item.title); continue; }
+        const lk = await settleLock(item.title);
+        if (lk) {
+          saveLock(S.course.classId, lk);
+          item.status = 'blocked';
+          item.needs = lk.needs;
+          const moved = prioritizeNeeds(lk.needs);
+          const self = lk.needs.filter(n => !S.queue.some(q => matchNeed([n], q.title)));
+          log(`🔒 ${item.title} đang khoá: cần xong trước ${lk.needs.length} mục.` + (moved ? ` Học trước ${moved} mục đó.` : '') +
+            (self.length ? ` Bạn tự làm: ${self.slice(0, 4).join('; ')}${self.length > 4 ? '…' : ''}` : ''));
+          continue;
+        }
         item.status = 'holding';
         if (!(await hold(item))) { item.status = 'pending'; break; }
         item.status = 'checking';
@@ -597,12 +615,21 @@
       // Luôn tìm từ đầu mục lục (bài chưa đạt đầu tiên), chỉ bỏ qua bài đang mở
       const cur = currentTest(tests);
       const order = tests.filter(t => t !== cur && !t.done && !lockReason(t));
+      const locked = [];
+      const lockNote = () => (locked.length ? ` (${locked.length} bài đang khoá vì chưa xong mục trước: bấm "🔒 Bài bị khoá" để xem cần làm gì.)` : '');
       // Mở lần lượt từng bài và đọc bảng Kết quả: đã có dòng "Đạt" thì ghi nhớ và mở bài sau
       for (const [i, next] of order.slice(0, 40).entries()) {
         quizStatus(`${reason || ''}Đang tìm bài chưa đạt từ đầu mục lục (${i + 1}): ${next.title}`, true);
         const before = testResults();
         const prevRows = new Set(before ? before.rows : []);
         if (!(await openItem(next))) return quizStatus('Không mở được bài: ' + next.title + '. Hãy mở mục lục rồi bấm lại.', true);
+        const lk = await settleLock(next.title);
+        if (lk) {
+          saveLock(classId, lk);
+          locked.push(next.title);
+          log(`🔒 Bài đang khoá (cần xong trước ${lk.needs.length} mục), bỏ qua: ${next.title}`);
+          continue;
+        }
         const r = await stableResults(next, prevRows);
         if (r && r.pass > 0) {
           log('Bài này đã có lần Đạt, bỏ qua: ' + next.title);
@@ -614,11 +641,11 @@
         log('⏭ Mở bài tập chưa đạt: ' + next.title);
         const expired = expiredOf(tests).length;
         return quizStatus(`Đã mở: ${next.title} (chưa có lần Đạt). Bấm "LÀM BÀI" khi sẵn sàng.` +
-          (expired ? ` (Có ${expired} bài đã hết hạn mà chưa đạt: xem "📋 Bài hết hạn chưa đạt".)` : ''), true);
+          (expired ? ` (Có ${expired} bài đã hết hạn mà chưa đạt: xem "📋 Bài hết hạn chưa đạt".)` : '') + lockNote(), true);
       }
       const expired = expiredOf(tests).length;
       quizStatus((order.length > 40 ? 'Đã kiểm tra 40 bài liền đều Đạt. Bấm lại để tìm tiếp.' : `Không còn bài tập nào khác chưa đạt (lớp có ${tests.length} bài tập) 🎉`) +
-        (expired ? ` Có ${expired} bài đã hết hạn mà chưa đạt: bấm "📋 Bài hết hạn chưa đạt".` : ''), true);
+        (expired ? ` Có ${expired} bài đã hết hạn mà chưa đạt: bấm "📋 Bài hết hạn chưa đạt".` : '') + lockNote(), true);
     } catch (e) {
       quizStatus('Lỗi: ' + e.message, true);
     } finally {
@@ -679,6 +706,231 @@
     passed['head:' + r.head] = true;
     writeJSON(LS_PASSED, passed);
     if (cfg.autoNextTest) goNextTest('Bài vừa nộp đã Đạt. ');
+  }
+
+  // ---------- Mục bị khoá vì phải học xong mục khác trước ----------
+  // Mở một mục còn điều kiện thì LMS hiện "Cần hoàn thành các nội dung sau để tiếp tục." kèm danh sách mục chưa xong.
+  // Mỗi lần thấy trang đó (tự mở hoặc khi extension mở) đều ghi lại theo lớp (LS_LOCKS); mở được bình thường thì xoá.
+  // Từ đó: hộp "🔒 Bài bị khoá" gộp các mục cần làm theo thứ tự mục lục, tự học ưu tiên các mục đó,
+  // "Bài tập chưa đạt đầu tiên" bỏ qua bài đang khoá thay vì dừng ở đó.
+  const LS_LOCKS = 'vnuTreoLocks';
+  const LOCK_RE = /Cần hoàn thành các nội dung sau/i;
+  const L = { head: '', since: 0, shown: '', busy: false };
+  const lockTitle = () => viewHeadRaw().replace(/\s*\([^()]*\)\s*$/, '').trim();
+  const matchNeed = (needs, title) => needs.some(n => {
+    const a = norm(n), b = norm(title);
+    return a && b && (a === b || a.startsWith(b) || b.startsWith(a));
+  });
+
+  function readLockPage() {
+    const view = document.querySelector('app-class-content-view');
+    if (!view || !LOCK_RE.test(view.innerText)) return null;
+    // "1. > 3.6. Exercise 3" -> "3.6. Exercise 3" (số thứ tự của danh sách và mũi tên), giữ nguyên số của tên mục
+    const strip = t => clean(t).replace(/^\d+\s*[.)]\s*(?=[>›»•]|\d+\.\d)/, '').replace(/^[>›»•\-\s]+/, '').trim();
+    // Phần tử nhỏ nhất chứa câu thông báo, rồi các dòng <li> đứng sau nó
+    const mark = [...view.querySelectorAll('*')].reverse().find(e => LOCK_RE.test(e.textContent));
+    let needs = [...view.querySelectorAll('li')]
+      .filter(li => mark && (mark.compareDocumentPosition(li) & Node.DOCUMENT_POSITION_FOLLOWING) && !mark.contains(li))
+      .map(li => strip(li.innerText));
+    if (!needs.length) {
+      // Không có <li>: lấy các dòng chữ sau câu thông báo
+      const lines = view.innerText.split('\n');
+      const at = lines.findIndex(x => LOCK_RE.test(x));
+      needs = lines.slice(at + 1).map(strip);
+    }
+    needs = needs.filter((x, i, a) => x && x.length < 200 && a.indexOf(x) === i);
+    return needs.length ? { title: lockTitle(), needs } : null;
+  }
+
+  const classLocks = classId => readJSON(LS_LOCKS, {})[classId] || {};
+  function saveLock(classId, lk) {
+    const all = readJSON(LS_LOCKS, {});
+    (all[classId] = all[classId] || {})[norm(lk.title)] = { title: lk.title, needs: lk.needs, at: Date.now() };
+    writeJSON(LS_LOCKS, all);
+  }
+  function dropLock(classId, title) {
+    const all = readJSON(LS_LOCKS, {});
+    const c = all[classId] || {};
+    const key = Object.keys(c).find(k => norm(title).startsWith(k) || k.startsWith(norm(title)));
+    if (!key) return null;
+    const was = c[key];
+    delete c[key];
+    writeJSON(LS_LOCKS, all);
+    return was;
+  }
+
+  // Vừa mở mục: chờ trang ổn định rồi trả về danh sách mục cần học trước (null nếu mục mở được bình thường)
+  async function settleLock(title) {
+    await sleep(1500);
+    let last = '';
+    for (let k = 0; k < 10; k++) {
+      const lk = readLockPage();
+      const mine = lk && viewHead().startsWith(norm(title).slice(0, 40));
+      const sig = mine ? 'lock|' + lk.needs.join('|') : lk ? '' : 'open';
+      if (sig && sig === last) return mine ? lk : null;
+      last = sig;
+      await sleep(600);
+    }
+    return null;
+  }
+
+  // Cây mục lục + tiến trình học, giữ 1 phút (để đánh dấu mục nào đã xong)
+  const LT = { at: 0, classId: '', leaves: [], learning: {} };
+  async function courseState(classId, fresh) {
+    if (!fresh && LT.classId === classId && Date.now() - LT.at < 60000) return LT;
+    const [tree, learning] = await Promise.all([
+      api('LmsClassTopic/searchFrTop1?classId=' + classId + '&key='), loadLearning(classId)]);
+    const leaves = [], seen = {};
+    const walk = nodes => {
+      for (const n of nodes || []) {
+        if (n.isFolder) { walk(n.childs); continue; }
+        const key = norm(n.title);
+        seen[key] = key in seen ? seen[key] + 1 : 0;
+        leaves.push({ id: n.id, title: n.title, dup: seen[key], idx: leaves.length });
+      }
+    };
+    walk(tree);
+    return Object.assign(LT, { at: Date.now(), classId, leaves, learning });
+  }
+  const leafDone = (st, l) => !!(l && st.learning[l.id] && (st.learning[l.id].isFinish || st.learning[l.id].isPassed));
+  function findLeaf(st, text) {
+    const n = norm(text);
+    let pool = st.leaves.filter(l => norm(l.title) === n);
+    if (!pool.length) pool = st.leaves.filter(l => matchNeed([text], l.title));
+    if (!pool.length && /^\d+\.\s/.test(text)) return findLeaf(st, text.replace(/^\d+\.\s*/, ''));
+    return pool.find(l => !leafDone(st, l)) || pool[0] || null;
+  }
+
+  // Người dùng tự mở một mục: thấy trang khoá thì ghi lại và hiện hộp; mục từng khoá nay mở được thì xoá khỏi danh sách
+  function watchLockPage() {
+    const classId = classIdFromUrl();
+    if (!classId || L.busy || T.busy) return;
+    const head = viewHead();
+    if (!head) return;
+    if (head !== L.head) { L.head = head; L.since = Date.now(); return; }
+    const age = Date.now() - L.since;
+    if (age < 2500) return;
+    const lk = readLockPage();
+    if (!lk) {
+      const view = document.querySelector('app-class-content-view');
+      if (age > 6000 && L.shown !== 'open|' + head && view && view.innerText.length > 80) {
+        L.shown = 'open|' + head;
+        const was = dropLock(classId, lockTitle());
+        if (was) { log('🔓 Đã mở khoá: ' + was.title); if (ui && !ui.$('.locks').hidden) showLocks(); }
+      }
+      return;
+    }
+    const sig = head + '|' + lk.needs.join('|');
+    if (L.shown === sig) return;
+    L.shown = sig;
+    saveLock(classId, lk);
+    log(`🔒 ${lk.title} đang khoá: cần hoàn thành trước ${lk.needs.length} mục.`);
+    if (ui) { buildUI(); ui.toggle(true); showLocks(lk.title); }
+  }
+
+  // Tự học: đưa các mục là điều kiện mở khoá lên đầu danh sách
+  function prioritizeNeeds(needs) {
+    const first = S.queue.filter(q => q.status === 'pending' && matchNeed(needs, q.title));
+    if (first.length) S.queue = first.concat(S.queue.filter(q => !first.includes(q)));
+    return first.length;
+  }
+
+  async function showLocks(focus) {
+    const classId = classIdFromUrl();
+    if (!classId || !ui) return;
+    const box = ui.$('.locks');
+    const locks = Object.values(classLocks(classId));
+    box.hidden = false;
+    if (!locks.length) {
+      box.innerHTML = `<div class="muted">Chưa thấy mục nào bị khoá trong lớp này. Bấm "Kiểm tra cả lớp": extension mở lần lượt
+          các bài tập chưa đạt và ghi lại bài nào đòi học xong mục khác trước.</div>
+        <div class="qrow"><button class="lkscan">🔍 Kiểm tra cả lớp</button><button class="lkhide">Ẩn</button></div>`;
+      return;
+    }
+    box.innerHTML = '<div class="muted">Đang đọc tiến trình học…</div>';
+    let st = { leaves: [], learning: {} };
+    try { st = await courseState(classId); } catch (e) { log('Không đọc được tiến trình: ' + e.message); }
+    // Gộp các mục cần làm của mọi bài đang khoá, xếp theo thứ tự mục lục
+    const map = new Map();
+    for (const lk of locks) {
+      for (const t of lk.needs) {
+        const k = norm(t);
+        if (!map.has(k)) map.set(k, { text: t, leaf: findLeaf(st, t), unlocks: [] });
+        map.get(k).unlocks.push(lk.title);
+      }
+    }
+    const items = [...map.values()].sort((a, b) => (a.leaf ? a.leaf.idx : 1e9) - (b.leaf ? b.leaf.idx : 1e9));
+    await Promise.all(items.filter(x => x.leaf).map(async x => { try { x.kind = kindOf(await detail(x.leaf.id)); } catch (e) {} }));
+    items.forEach(x => { x.done = leafDone(st, x.leaf); });
+    const left = items.filter(x => !x.done);
+    const order = l => { const f = findLeaf(st, l.title); return f ? f.idx : 1e9; };
+    locks.sort((a, b) => (norm(b.title) === norm(focus || '')) - (norm(a.title) === norm(focus || '')) || order(a) - order(b));
+    ui.lockItems = items;
+    const row = x => `<li class="${x.done ? 'done' : ''}">${x.done ? '✓' : '○'} ${esc(x.text)}
+        <small>${x.kind ? '· ' + esc(KIND_LABEL[x.kind] || '') : x.leaf ? '' : '· không thấy trong mục lục'}${x.unlocks.length > 1 ? ` · mở khoá ${x.unlocks.length} bài` : ''}</small>
+        ${x.done ? '' : `<button data-open="${items.indexOf(x)}">Mở</button>`}</li>`;
+    const nTests = left.filter(x => x.kind === 'test').length;
+    box.innerHTML = `<div class="muted"><b>${locks.length}</b> mục đang khoá. Còn <b>${left.length}</b> mục phải xong trước (theo thứ tự mục lục):</div>
+      <ol class="lkall">${items.map(row).join('')}</ol>
+      ${left.length ? `<div class="qrow"><button data-open="${items.indexOf(left[0])}">▶ Mở mục đầu tiên chưa xong</button></div>` : ''}
+      ${locks.map(lk => {
+        const mine = items.filter(x => x.unlocks.includes(lk.title));
+        const n = mine.filter(x => !x.done).length;
+        return `<details ${norm(lk.title) === norm(focus || '') ? 'open' : ''}><summary>🔒 ${esc(lk.title)} · ${n ? `còn ${n}/${mine.length} mục` : 'đã đủ, mở lại để kiểm tra'}</summary>
+          <ol>${mine.map(row).join('')}</ol></details>`;
+      }).join('')}
+      <div class="muted">${nTests ? `${nTests} mục là bài kiểm tra/bài tập: bạn tự làm (dùng Trợ lý AI). ` : ''}Video, bài đọc: "Bắt đầu tự học" sẽ học các mục này trước.
+        Ghi nhận theo lần mở gần nhất, mục mở được rồi sẽ tự biến mất.</div>
+      <div class="qrow"><button class="lkscan">🔍 Kiểm tra lại cả lớp</button><button class="lkhide">Ẩn</button></div>`;
+  }
+
+  async function openNeed(i) {
+    const x = ui.lockItems && ui.lockItems[i];
+    if (!x || T.busy || S.active) return;
+    T.busy = true;
+    render();
+    try {
+      quizStatus('Đang mở: ' + x.text, true);
+      const ok = await openItem(x.leaf || { title: x.text, dup: 0 });
+      quizStatus(ok ? 'Đã mở: ' + x.text : 'Không mở được: ' + x.text + '. Hãy tìm trong mục lục bên trái.', true);
+    } finally {
+      T.busy = false;
+      render();
+    }
+  }
+
+  // Mở lần lượt các bài tập chưa đạt (và các mục từng thấy khoá) để biết bài nào đang khoá, cần làm gì trước
+  async function scanLocks() {
+    const classId = classIdFromUrl();
+    if (!classId || T.busy || S.active) return;
+    T.busy = true; L.busy = true;
+    render();
+    let nLocked = 0;
+    try {
+      const tests = await loadTests(classId);
+      const st = await courseState(classId, true);
+      const cands = tests.filter(t => !t.lmsPassed && !t.done && !lockReason(t));
+      for (const k of Object.values(classLocks(classId))) {
+        if (cands.some(c => norm(c.title) === norm(k.title))) continue;
+        const leaf = findLeaf(st, k.title);
+        if (leaf) cands.push(leaf);
+      }
+      for (const [i, t] of cands.entries()) {
+        quizStatus(`Đang kiểm tra mục bị khoá ${i + 1}/${cands.length}: ${t.title}`, true);
+        if (!(await openItem(t))) { log('Không mở được: ' + t.title); continue; }
+        const lk = await settleLock(t.title);
+        if (lk) { saveLock(classId, lk); nLocked++; log(`🔒 ${lk.title}: cần xong trước ${lk.needs.length} mục.`); }
+        else if (dropLock(classId, t.title)) log('🔓 Đã mở khoá: ' + t.title);
+      }
+      quizStatus(nLocked ? `Có ${nLocked} bài đang khoá vì chưa xong mục trước (danh sách bên dưới).`
+        : `Đã kiểm tra ${cands.length} mục: không bài nào bị khoá vì thiếu mục học trước. 🎉`, true);
+    } catch (e) {
+      quizStatus('Lỗi: ' + e.message, true);
+    } finally {
+      T.busy = false; L.busy = false;
+      render();
+    }
+    await showLocks();
   }
 
   // ---------- 3. Trợ lý làm bài (AI) ----------
@@ -1334,7 +1586,15 @@
     .qrow button:hover:not(:disabled) { border-color: var(--ai); }
     .qrow button.qsuggest { background: var(--ai); border-color: var(--ai); color: #fff; font-weight: 600; }
     .qrow button.qkey { flex: 0 0 auto; }
-    .expired[hidden], .dllist[hidden] { display: none; }
+    .expired[hidden], .dllist[hidden], .locks[hidden] { display: none; }
+    .locks { margin: 4px 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+    .locks ol { max-height: 220px; overflow: auto; padding-left: 18px; list-style: decimal; margin: 6px 0; }
+    .locks li { padding: 3px 0; }
+    .locks li.done { color: var(--sub); text-decoration: line-through; }
+    .locks li small { color: var(--sub); }
+    .locks li button { margin-left: 4px; padding: 1px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--wash); color: var(--text); cursor: pointer; font-size: 11px; }
+    .locks details { margin: 4px 0; }
+    .locks summary { cursor: pointer; }
     .dllist { margin: 0 0 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
     .dlrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }
     .dlrow small { color: var(--sub); word-break: break-all; }
@@ -1370,7 +1630,7 @@
       color: var(--ink); cursor: pointer; font-size: 12px; font-weight: 600; }
     select { padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--text); font: inherit; font-size: 12px; }
   `;
-  const ICON = { pending: '○', holding: '▶', checking: '…', done: '✓', fail: '✗', error: '⚠', locked: '🔒' };
+  const ICON = { pending: '○', holding: '▶', checking: '…', done: '✓', fail: '✗', error: '⚠', locked: '🔒', blocked: '⛓' };
 
   let ui = null;
   function buildUI() {
@@ -1403,6 +1663,8 @@
           <div class="qrow"><button class="qnext" title="Mở bài kiểm tra đầu tiên (tính từ đầu mục lục) mà bảng Kết quả chưa có dòng Đạt">⏭ Bài tập chưa đạt đầu tiên</button></div>
           <div class="qrow"><button class="qexp" title="Liệt kê bài kiểm tra đã quá hạn mà chưa đạt, để báo giảng viên">📋 Bài hết hạn chưa đạt</button></div>
           <div class="expired" hidden></div>
+          <div class="qrow"><button class="qlock" title="Bài nào đang khoá vì phải học xong mục khác trước, và cần làm những mục nào">🔒 Bài bị khoá cần học trước</button></div>
+          <div class="locks" hidden></div>
           ${box('autoNextTest', 'Nộp bài xong mà Đạt thì tự mở bài tập chưa đạt đầu tiên')}
           <div class="muted">Không tự nộp bài hay đăng bài. Gợi ý được lưu lại: lần sau gặp câu giống hệt sẽ dùng luôn, không tốn tiền API.</div>
         </details>
@@ -1503,6 +1765,14 @@
     $('.qdl').addEventListener('click', () => downloadAudio());
     $('.qnext').addEventListener('click', () => goNextTest());
     $('.qexp').addEventListener('click', () => showExpired());
+    $('.qlock').addEventListener('click', () => { if ($('.locks').hidden) showLocks(); else $('.locks').hidden = true; });
+    $('.locks').addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.open) openNeed(+b.dataset.open);
+      else if (b.classList.contains('lkscan')) scanLocks();
+      else if (b.classList.contains('lkhide')) $('.locks').hidden = true;
+    });
     $('.updcheck').addEventListener('click', () => {
       $('.updcheck').disabled = true;
       $('.updres').textContent = 'Đang hỏi GitHub…';
@@ -1598,7 +1868,7 @@
       $('.qcount').textContent = S.queue.length ? `(${left.length} mục, ~${Math.ceil(totalMs / 60000)} phút)` : '';
       $('.queue').innerHTML = S.queue.length
         ? S.queue.map(q => `<li class="${q.status}">${ICON[q.status] || ''} ${esc(q.title)}
-            <small>· ${esc(KIND_LABEL[q.kind])} · ${q.status === 'locked' ? esc(lockReason(q)) : Math.ceil(q.needMs / 60000) + ' phút'}</small></li>`).join('')
+            <small>· ${esc(KIND_LABEL[q.kind])} · ${q.status === 'locked' ? esc(lockReason(q)) : q.status === 'blocked' ? `cần xong trước ${q.needs.length} mục` : Math.ceil(q.needMs / 60000) + ' phút'}</small></li>`).join('')
         : '<div class="muted">Chưa có. Bấm "Quét lại" hoặc "Bắt đầu tự học".</div>';
     }
     const fsig = c ? c.folders.map(f => f.id).join() + cfg.skipFolders.join() : '';
@@ -1632,6 +1902,8 @@
     $('.qwrite').disabled = Q.busy;
     $('.qnext').disabled = T.busy || S.active || !classIdFromUrl();
     $('.qexp').disabled = T.busy || !classIdFromUrl();
+    $('.qlock').disabled = !classIdFromUrl();
+    ui.root.querySelectorAll('.locks button').forEach(b => { if (!b.classList.contains('lkhide')) b.disabled = T.busy || S.active; });
   }
 
   window.addEventListener('message', e => {
@@ -1762,7 +2034,7 @@
     resumeIfNeeded();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
-  timer.every(3000, () => { buildUI(); tickVideo(); answerLmsAlert(); watchTestPass(); watchExpiredPage(); if (ui && !ui.panel.hidden && !S.active) render(); });
+  timer.every(3000, () => { buildUI(); tickVideo(); answerLmsAlert(); watchTestPass(); watchExpiredPage(); watchLockPage(); if (ui && !ui.panel.hidden && !S.active) render(); });
   timer.every(20000, () => cfg.keepAlive && pokeActivity());
   // Đồng hồ Worker nhịp 1 giây: nếu khựng lại lâu nghĩa là cả tab đã bị ngưng (tab ngủ hoặc máy ngủ)
   let lastBeat = Date.now();
