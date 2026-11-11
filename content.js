@@ -1007,75 +1007,101 @@
     return out;
   }
 
-  // ---------- Tải file nghe ----------
-  // Các file audio thật trên trang, bỏ trùng, kèm số câu dùng file đó. Câu thả xuống (pd) có thẻ audio ẩn với địa chỉ
-  // trống: trình duyệt hiểu thành địa chỉ trang, nên chỉ lấy thẻ có thuộc tính src khác rỗng và trỏ tới một file.
-  function audioSources() {
+  // ---------- Tải file nghe / video ----------
+  // Các file audio, video thật trên trang (đề bài nghe, video "While watching"…), bỏ trùng, kèm số câu dùng file đó.
+  // Câu thả xuống (pd) có thẻ audio ẩn với địa chỉ trống: trình duyệt hiểu thành địa chỉ trang, nên chỉ lấy thẻ có
+  // thuộc tính src khác rỗng và trỏ tới một file. Video phát dạng luồng (blob:) thì không tải được, bỏ qua.
+  function mediaSources() {
     const out = [];
-    for (const el of document.querySelectorAll('audio')) {
+    for (const el of document.querySelectorAll('audio, video')) {
       const raw = el.getAttribute('src') || (el.querySelector('source[src]') || { getAttribute: () => '' }).getAttribute('src');
       if (!raw || !raw.trim()) continue;
       const src = el.currentSrc || el.src || (el.querySelector('source') || {}).src || '';
       let path = '';
       try { path = new URL(src).pathname; } catch (e) { continue; }
       if (!/^https?:/.test(src) || path.endsWith('/') || src.split('#')[0] === location.href.split('#')[0]) continue;
-      // Đuôi rõ ràng không phải âm thanh (trang, script, ảnh…) thì bỏ; không có đuôi thì vẫn thử, lúc tải sẽ kiểm tra lại
+      // Đuôi rõ ràng không phải âm thanh/video (trang, script, ảnh…) thì bỏ; không có đuôi thì vẫn thử, lúc tải sẽ kiểm tra lại
       if (/\.(html?|php|aspx?|js|css|json|png|jpe?g|gif|svg)$/i.test(path)) continue;
       if (out.some(x => x.src === src)) continue;
       const num = el.closest('.question-item') && el.closest('.question-item').querySelector('.question-num');
       const n = ((num && num.innerText.match(/\d+\s*\.\s*\d+|\d+/)) || [''])[0].replace(/\s+/g, '');
-      out.push({ src, label: n ? 'Cau-' + n : '' });
+      out.push({ src, video: el.tagName === 'VIDEO', label: n ? 'Cau-' + n : '' });
     }
     return out;
   }
+  const mediaWord = items => (items.every(x => x.video) ? 'video' : items.some(x => x.video) ? 'file nghe/video' : 'file nghe');
 
-  function audioFileName(item, type, i) {
+  function mediaFileName(item, type, i) {
     let name = '';
     try { name = decodeURIComponent(new URL(item.src).pathname.split('/').pop()); } catch (e) {}
-    name = name.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'bai-nghe-' + (i + 1);
-    if (!/\.[a-z0-9]{2,4}$/i.test(name)) name += '.' + ((type.split('/')[1] || 'mp3').replace('mpeg', 'mp3').replace(/[^a-z0-9]/gi, ''));
+    name = name.replace(/[\\/:*?"<>|]+/g, '_').trim() || (item.video ? 'video-' : 'bai-nghe-') + (i + 1);
+    if (!/\.[a-z0-9]{2,4}$/i.test(name)) {
+      name += '.' + ((type.split('/')[1] || (item.video ? 'mp4' : 'mp3')).replace('mpeg', 'mp3').replace('quicktime', 'mov').replace(/[^a-z0-9]/gi, ''));
+    }
     return (item.label ? item.label + ' - ' : '') + name;
   }
 
-  // Tải một file; chỉ lưu khi đúng là audio/video (không lưu nhầm trang HTML)
+  // Tải một file; chỉ lưu khi đúng là audio/video (không lưu nhầm trang HTML). Video lớn: hiện số MB đã tải.
   async function downloadOne(item, i) {
+    const what = item.video ? 'video' : 'file nghe';
     try {
       const res = await fetch(item.src, { credentials: 'include' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      const blob = await res.blob();
-      if (blob.type && !/^(audio|video)\/|octet-stream/.test(blob.type)) throw new Error('không phải file âm thanh (' + blob.type + ')');
+      const type = (res.headers.get('content-type') || '').split(';')[0].trim();
+      if (type && !/^(audio|video)\/|octet-stream/.test(type)) throw new Error('không phải file âm thanh/video (' + type + ')');
+      const total = +res.headers.get('content-length') || 0;
+      const parts = [];
+      let got = 0, shown = 0;
+      const reader = res.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        parts.push(value);
+        got += value.length;
+        if (got - shown > 2e6) {
+          shown = got;
+          quizStatus(`Đang tải ${what}: ${(got / 1e6).toFixed(1)}${total ? ' / ' + (total / 1e6).toFixed(1) : ''} MB…`, true);
+        }
+      }
+      const blob = new Blob(parts, { type });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = audioFileName(item, blob.type || '', i);
+      a.download = mediaFileName(item, type, i);
       document.body.appendChild(a);
       a.click();
       a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-      log('⬇ Đã tải file nghe: ' + a.download);
+      setTimeout(() => URL.revokeObjectURL(url), 120000);
+      log(`⬇ Đã tải ${what}: ${a.download}`);
       return true;
     } catch (e) {
-      log('Không tải được file nghe ' + (item.label || i + 1) + ': ' + e.message);
+      log(`Không tải được ${what} ${item.label || i + 1}: ${e.message}`);
+      if (item.video && /fetch|network|cors/i.test(e.message)) {
+        // Máy chủ video không cho đọc từ trang LMS: mở video ở tab mới, ở đó bấm ⋮ → Tải xuống
+        window.open(item.src, '_blank', 'noopener');
+        log('Đã mở video ở tab mới: bấm nút ⋮ trên video → Tải xuống (Download).');
+      }
       return false;
     }
   }
 
   // Một file: tải luôn. Nhiều file: mở danh sách, mỗi file một nút tải riêng (mỗi lần bấm một file nên trình duyệt
   // không hỏi "cho phép tải nhiều tệp"), kèm "Tải tất cả" (trình duyệt có thể hỏi một lần, hãy bấm Cho phép).
-  async function downloadAudio() {
-    const items = audioSources();
-    if (!items.length) return quizStatus('Trang này không có file nghe.');
+  async function downloadMedia() {
+    const items = mediaSources();
+    if (!items.length) return quizStatus('Trang này không có file nghe hay video.');
+    const word = mediaWord(items);
     if (items.length === 1) {
-      quizStatus('Đang tải file nghe…', true);
+      quizStatus(`Đang tải ${word}…`, true);
       const ok = await downloadOne(items[0], 0);
-      return quizStatus(ok ? 'Đã tải file nghe vào thư mục Tải xuống (Downloads).' : 'Không tải được file nghe, xem Nhật ký.', true);
+      return quizStatus(ok ? `Đã tải ${word} vào thư mục Tải xuống (Downloads).` : `Không tải được ${word}, xem Nhật ký.`, true);
     }
     const box = ui.$('.dllist');
     if (!box.hidden) { box.hidden = true; return; }
     box.innerHTML = items.map((it, i) => {
       let base = '';
       try { base = decodeURIComponent(new URL(it.src).pathname.split('/').pop()); } catch (e) {}
-      return `<div class="dlrow"><span>${esc(it.label ? it.label.replace('Cau-', 'Câu ') : 'File ' + (i + 1))} · <small>${esc(base)}</small></span>
+      return `<div class="dlrow"><span>${it.video ? '🎬' : '🎧'} ${esc(it.label ? it.label.replace('Cau-', 'Câu ') : 'File ' + (i + 1))} · <small>${esc(base)}</small></span>
         <button data-i="${i}">⬇</button></div>`;
     }).join('') + '<div class="qrow"><button class="dlall">⬇ Tải tất cả</button></div>';
     box.hidden = false;
@@ -1086,13 +1112,13 @@
     box.querySelector('.dlall').addEventListener('click', async () => {
       let ok = 0;
       for (const [i, it] of items.entries()) {
-        quizStatus(`Đang tải file nghe ${i + 1}/${items.length}…`, true);
+        quizStatus(`Đang tải ${i + 1}/${items.length}…`, true);
         if (await downloadOne(it, i)) ok++;
         await sleep(400);
       }
-      quizStatus(`Đã tải ${ok}/${items.length} file nghe. Nếu trình duyệt hỏi "tải nhiều tệp", hãy bấm Cho phép.`, true);
+      quizStatus(`Đã tải ${ok}/${items.length} ${word}. Nếu trình duyệt hỏi "tải nhiều tệp", hãy bấm Cho phép.`, true);
     });
-    quizStatus(`Trang có ${items.length} file nghe: bấm ⬇ ở từng dòng, hoặc "Tải tất cả".`, true);
+    quizStatus(`Trang có ${items.length} ${word}: bấm ⬇ ở từng dòng, hoặc "Tải tất cả".`, true);
   }
 
   // Ảnh trong đề (tối đa 8 ảnh, mỗi ảnh dưới 4 MB). Ảnh không tải được thì bỏ qua.
@@ -1693,7 +1719,7 @@
         <details class="quiz" open><summary>Trợ lý làm bài (AI)</summary>
           <div class="qstatus"></div>
           <div class="qrow"><button class="qsuggest">🤖 Gợi ý đáp án</button><button class="qfill">✍ Điền gợi ý</button><button class="qkey">⚙ Khoá API</button></div>
-          <div class="qrow"><button class="qdl" hidden title="Lưu file audio của bài về máy (thư mục Tải xuống)">⬇ Tải file nghe</button></div>
+          <div class="qrow"><button class="qdl" hidden title="Lưu file nghe / video của bài về máy (thư mục Tải xuống)">⬇ Tải file nghe</button></div>
           <div class="dllist" hidden></div>
           <div class="qrow wrow" hidden><input class="qidea" placeholder="Ý bạn muốn viết (không bắt buộc)"><button class="qwrite">📝 Viết nháp</button></div>
           <div class="qrow"><button class="qnext" title="Mở bài kiểm tra đầu tiên (tính từ đầu mục lục) mà bảng Kết quả chưa có dòng Đạt">⏭ Bài tập chưa đạt đầu tiên</button></div>
@@ -1798,7 +1824,7 @@
     $('.qsuggest').addEventListener('click', () => suggestQuiz());
     $('.qfill').addEventListener('click', () => fillQuiz());
     $('.qwrite').addEventListener('click', () => writeDraft());
-    $('.qdl').addEventListener('click', () => downloadAudio());
+    $('.qdl').addEventListener('click', () => downloadMedia());
     $('.qnext').addEventListener('click', () => goNextTest());
     $('.qexp').addEventListener('click', () => showExpired());
     $('.qlock').addEventListener('click', () => { if ($('.locks').hidden) showLocks(); else $('.locks').hidden = true; });
@@ -1931,10 +1957,11 @@
     $('.qsuggest').disabled = Q.busy || !found.length;
     $('.qfill').disabled = Q.busy || !found.length;
     $('.wrow').hidden = !w;
-    const nAudio = audioSources().length;
+    const media = mediaSources();
+    const nAudio = media.length;
     $('.qdl').hidden = !nAudio;
     if (!nAudio) $('.dllist').hidden = true;
-    $('.qdl').textContent = nAudio > 1 ? `⬇ Tải ${nAudio} file nghe` : '⬇ Tải file nghe';
+    $('.qdl').textContent = nAudio ? `⬇ Tải ${nAudio > 1 ? nAudio + ' ' : ''}${mediaWord(media)}` : '';
     $('.qwrite').disabled = Q.busy;
     $('.qnext').disabled = T.busy || S.active || !classIdFromUrl();
     $('.qexp').disabled = T.busy || !classIdFromUrl();
